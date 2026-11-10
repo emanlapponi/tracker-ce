@@ -3,15 +3,12 @@
 // PTFX_FLAGS: EFFECT, STEREO
 // PTFX_SCRATCH: 0
 //
-// One-knob saturator. Drive (quadratic taper) sets input gain (0..+36 dB),
-// bass tightening, pre-emphasis (highs driven harder, restored after the
-// shaper so the tone stays balanced but the grit is brighter), level-
-// dependent asymmetry (even harmonics grow as the signal pushes), and a
-// darkening post filter that tames aliasing fizz. Output level is
-// compensated from the shaper's own response. 0 % drive = passthrough.
+// Distortion with high/lo passthrough. Drive sets input gain (0..+31 dB), bass tightening,
+// pre/de-emphasis, level-dependent asymmetry and a post LPF against aliasing.
+// Output level is auto-compensated. 0 % drive = passthrough.
 // Mode: Warm (Pade tanh), Grit (asymmetric diode), Fold (triangle folder).
-// Split + Target: a crossover at Split Hz; only the Target band (Low or High)
-// is driven, the other band is untouched. Split 0 + High = whole signal driven.
+// Split + Target: only the Target band (Low/High) of a crossover at Split Hz
+// is driven. Split 0 + High = whole signal driven.
 
 #include "tracker_plugin.h"
 
@@ -22,8 +19,7 @@ const PluginParam PLUGIN_PARAMS[4] = {
     PTFX_PARAM_LIST  ("Target", 1, "Low|High")
 };
 
-// Split is a list so steps are ~half an octave: fine at the bottom, wide at
-// the top (the host steps lists by index; the builder caps them at 16 items)
+// List params (max 16 items): ~half-octave steps
 static const float s_splitHz[16] = {
     0, 60, 90, 130, 200, 300, 450, 650, 1000, 1500, 2200, 3300, 5000, 7500, 11000, 16000
 };
@@ -37,12 +33,12 @@ static float s_bias = 0.0f, s_sag = 0.0f, s_emph = 0.0f, s_deemph = 0.0f;
 static float s_aTight = 0.0f, s_aEmph = 0.0f, s_aPost = 1.0f, s_aEnv = 0.0f;
 static float s_dcR = 0.999f;
 
-// Crossover (TPT SVF) coefficients, gliding at ~10 ms so Split never zippers
+// Crossover (TPT SVF) coefficients, glided at ~10 ms
 static float s_crossA[3], s_crossAt[3];
 static float s_crossFc = 0.0f;
-// Low-band mix: 0 = crossover off (whole signal driven), 1 = on
+// 0 = crossover off, 1 = on
 static float s_lowMix = 0.0f, s_lowMixAt = 0.0f;
-// Target blend: 0 = drive the high band, 1 = drive the low band (glides too)
+// 0 = drive high band, 1 = drive low band
 static float s_tgt = 0.0f, s_tgtAt = 0.0f;
 
 // Per-channel state
@@ -94,7 +90,7 @@ static float s_grit(float x) {
     return (x >= 0.0f) ? s_pade(x) : 0.75f * s_pade(1.5f * x);
 }
 
-// Triangle wavefolder (unity slope at 0), cubic-softened corners
+// Triangle wavefolder, cubic-softened corners
 static float s_fold(float x) {
     if (x > 64.0f)  x = 64.0f;
     if (x < -64.0f) x = -64.0f;
@@ -106,7 +102,7 @@ static float s_fold(float x) {
     return t * (1.5f - 0.5f * t * t);
 }
 
-// noinline: -O3 would paste all three shapers at every call site (~1.4 KB)
+// noinline: keeps -O3 from inlining all three shapers at each call site
 __attribute__((noinline)) static float s_shape(int mode, float x) {
     switch (mode) {
         case 1:  return s_grit(x);
@@ -119,8 +115,8 @@ __attribute__((noinline)) static float s_shape(int mode, float x) {
 
 static float s_drive = 0.0f;
 
-// Output gain from the shaper itself: run a -10 dBFS sine through the current
-// mode at the current drive and match its AC level. Runs on param change only.
+// Output gain: match the AC level of a 0.3-amplitude sine through the shaper
+// to the input's. Param change only.
 static float s_autoGain(void) {
     if (!s_host || !s_host->sinf) return 1.0f;
     const float e = 0.6366f * 0.3f * s_inputGain;
@@ -134,7 +130,7 @@ static float s_autoGain(void) {
     const float mean = sum * (1.0f / 256.0f);
     const float var = sum2 * (1.0f / 256.0f) - mean * mean;
     if (var < 1e-6f || !s_host->sqrtf) return 1.0f;
-    // Fold is bright; the post LPF eats part of it, so give back what it removes
+    // Fold is bright; the post LPF removes part of it, so compensate
     return 0.2121f / s_host->sqrtf(var) * (s_mode == 2 ? 1.0f + 0.8f * s_drive * s_drive : 1.0f);
 }
 
@@ -143,14 +139,13 @@ static void s_applyDrive(float d) {
     if (d > 1.0f) d = 1.0f;
     s_drive = d;
 
-    s_inputGain = 1.0f + 37.0f * d * d;               // quadratic taper, 0..+31 dB
+    s_inputGain = 1.0f + 37.0f * d * d;               // 0..+31 dB
     s_mix       = d * 25.0f;
     if (s_mix > 1.0f) s_mix = 1.0f;
 
     s_bias   = 0.12f * d;                             // static asymmetry
     s_sag    = 0.30f * d;                             // level-dependent asymmetry
-    // Emphasis: full (+8 dB) up to 60 % drive, then fades to +6 dB so the top
-    // of the knob is not fizzy
+    // Emphasis: +8 dB up to 60 % drive, fading to +6 dB at 100 %
     s_emph   = 1.5f * (d < 0.6f ? d / 0.6f : 1.0f - 0.9f * (d - 0.6f));
     s_deemph = s_emph / (1.0f + s_emph);
     s_outputGain = s_autoGain();
@@ -166,7 +161,7 @@ static void s_applyCross(float fc) {
     if (fc > sr * 0.45f) fc = sr * 0.45f;
     s_crossFc = fc;
     s_lowMixAt = (fc > 0.0f) ? 1.0f : 0.0f;
-    // Off: park the crossover wide open; its output is faded out anyway
+    // Off: park the crossover wide open (its output is faded out)
     if (fc < 20.0f) fc = (fc > 0.0f) ? 20.0f : sr * 0.45f;
     s_svfCoeffs(fc, sr, s_crossAt);
 }
@@ -258,7 +253,7 @@ int32_t plugin_process_block(const int16_t** in, int16_t** out, uint32_t samples
         const float lowMix = s_lowMix, tgt = s_tgt;
         const float fadeT = (i < fade0) ? (float)(fade0 - i) / (float)s_fadeLength : 0.0f;
 
-        #pragma GCC unroll 1 // unrolling L/R doubles the loop body for ~no speed gain
+        #pragma GCC unroll 1 // unrolling only grows code
         for (uint8_t ch = 0; ch < num_ch; ch++) {
             int16_t* d = dst[ch];
             if (!d) continue;
