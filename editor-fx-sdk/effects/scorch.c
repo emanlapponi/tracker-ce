@@ -3,7 +3,7 @@
 // PTFX_FLAGS: EFFECT, STEREO
 // PTFX_SCRATCH: 0
 //
-// Distortion with high/lo passthrough. Drive sets input gain (0..+31 dB), bass tightening,
+// Distortion with high/low passthrough. Drive sets input gain (0..+31 dB), bass tightening,
 // pre/de-emphasis, level-dependent asymmetry and a post LPF against aliasing.
 // Output level is auto-compensated. 0 % drive = passthrough.
 // Mode: Warm (Pade tanh), Grit (asymmetric diode), Fold (triangle folder).
