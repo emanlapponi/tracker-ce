@@ -69,6 +69,7 @@ def parse_elf_and_pack(
     output_channels: int,
     renders_aux_sends: int,
     has_sample_slots: int = 0,
+    audio_input: int = 0,
 ) -> None:
     with open(elf_path, "rb") as f:
         elf = f.read()
@@ -273,7 +274,7 @@ def parse_elf_and_pack(
     init_array_offset = init_array_sec["addr"] if (init_array_sec and init_array_sec["size"] > 0) else 0
     init_array_count = (init_array_sec["size"] // 4) if (init_array_sec and init_array_sec["size"] > 0) else 0
 
-    flags = 0x0001 if has_sample_slots else 0
+    flags = (0x0001 if has_sample_slots else 0) | (0x0002 if audio_input else 0)
     header = struct.pack(
         "<IHHHH8s24s16sBBBBIIIIIIII8I",
         PSYN_MAGIC,
@@ -329,6 +330,7 @@ def main() -> None:
     parser.add_argument("--output-channels", type=int, default=2, help="1=Mono, 2=Stereo")
     parser.add_argument("--renders-aux", type=int, default=0, help="1 if engine writes aux sends")
     parser.add_argument("--has-sample-slots", type=int, default=0, help="1 if engine uses sample slots")
+    parser.add_argument("--audio-input", type=int, default=0, help="1 if engine consumes host audio input")
     args = parser.parse_args()
 
     patch_folder = args.patch_folder if args.patch_folder else args.code_name
@@ -345,6 +347,7 @@ def main() -> None:
         output_channels=args.output_channels,
         renders_aux_sends=args.renders_aux,
         has_sample_slots=args.has_sample_slots,
+        audio_input=args.audio_input,
     )
 
 

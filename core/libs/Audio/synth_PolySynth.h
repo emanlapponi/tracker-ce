@@ -21,6 +21,14 @@ class PolySynth : public AudioStream
     static constexpr int kRightChannelOffset = kSynthParts;
 
   private:
+    struct BusRoute
+    {
+        bool isBus = false;
+        uint16_t sources = 0;
+    };
+
+    BusRoute getBusRoute(int partIdx) const;
+
     Synth* trackerSynth = nullptr;
     bool isBlocked = true;
     float gainDB[kSynthParts] = {};

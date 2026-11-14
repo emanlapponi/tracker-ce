@@ -58,7 +58,8 @@ class SynthImpl
     void renderAudioBuffer(AudioBufferStereoRef buffer) override;
     void renderAudioBuffer(AudioBufferStereoRef bufferMain,
                            std::span<AudioBufferRef> bufferAux,
-                           int instrumentId) override;
+                           int instrumentId,
+                           std::optional<AudioBufferStereoRef> inputBuffer) override;
 
     void updateAudio() override;
     void updateMain() override;

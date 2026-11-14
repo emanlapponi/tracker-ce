@@ -22,6 +22,7 @@ extern "C" {
 #define PSYN_MAGIC 0x4E595350u /* "PSYN" in little-endian */
 #define PSYN_API_VERSION 1u
 #define PSYN_FLAG_HAS_SAMPLE_SLOTS 0x0001u /* Set in PsynHeader::flags if engine uses SampleSlots */
+#define PSYN_FLAG_AUDIO_INPUT      0x0002u /* Set in PsynHeader::flags if engine provides voice_render_audio_in */
 
 /**
  * Binary header at byte offset 0 of every .psyn file on SD card (/Synths/<NAME>.psyn).
@@ -31,7 +32,7 @@ typedef struct __attribute__((packed)) PsynHeader
 {
     uint32_t magic;                /* PSYN_MAGIC (0x4E595350) */
     uint16_t api_version;          /* PSYN_API_VERSION (1) */
-    uint16_t flags;                /* Reserved flags (0) */
+    uint16_t flags;                /* PSYN_FLAG_* bits */
     uint16_t type_id_wave;         /* InstrumentTypeId on Polyend Synth (or 0 for dynamic) */
     uint16_t type_id_play_tracker; /* InstrumentTypeId on Play/Tracker (or 0 for dynamic) */
     char code_name[8];             /* Short code name, e.g. "ACD", "CHIP" */
@@ -90,6 +91,19 @@ typedef struct PsynVoiceContext
     float pitchbend_range_semitones;
 } PsynVoiceContext;
 
+/**
+ * Host audio input for engines flagged with PSYN_FLAG_AUDIO_INPUT.
+ * A param with a non-zero PsynParamDesc::input_source routes that host source into the engine
+ * while the param value is above 0.5. Source ids: 0..7 sample tracks, 8..10 synth parts
+ * (only parts before the engine's own part are available).
+ * Buffers hold 128 samples. Pointers are NULL when nothing is routed.
+ */
+typedef struct PsynAudioInput
+{
+    const float* left;
+    const float* right;
+} PsynAudioInput;
+
 typedef struct PsynSampleData
 {
     const int16_t* data;
@@ -112,7 +126,8 @@ typedef struct PsynParamDesc
     uint8_t is_enum;              /* 0 or 1 */
     uint8_t midi_cc;              /* 0xFF if none */
     uint8_t invalidates_metadata; /* 0 or 1 */
-    uint16_t reserved;
+    uint8_t input_source;         /* 0 = none, else host input source id + 1 (see below) */
+    uint8_t reserved;
 } PsynParamDesc;
 
 typedef struct PsynMacroModDesc
@@ -245,6 +260,13 @@ typedef struct PsynPluginApi
     bool (*voice_get_current_velocity)(void* voice, float* out_vel);
     void (*voice_clear_previous_notes)(void* voice);
     void (*voice_reset)(void* voice);
+
+    /* Appended for engines with PSYN_FLAG_AUDIO_INPUT; older engines end at voice_reset */
+    void (*voice_render_audio_in)(void* voice,
+                                  const PsynVoiceContext* ctx,
+                                  const PsynAudioInput* in,
+                                  float* out_left,
+                                  float* out_right);
 } PsynPluginApi;
 
 typedef const PsynPluginApi* (*PsynEntryFn)(const PsynHostApi* host);

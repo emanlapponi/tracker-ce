@@ -138,6 +138,14 @@ class Patch : private boost::noncopyable
             tiny::optional<uint8_t, 0xff> midiCC = std::nullopt;
             bool invalidatesOtherMetadata = false;
             std::function<std::string(const Patch& patch, paramvalue_t value)> valueFormatter = {};
+
+            /**
+             * Host input sources are numbered 0..kInputSourceSynthBase - 1 for sample tracks,
+             * followed by synth parts. A param with a source routes it into the voice input while
+             * its value is above 0.5. Only synth parts before the voice's own part are available.
+             */
+            static constexpr int kInputSourceSynthBase = 8;
+            int inputSource = -1;
         };
 
         struct Macro

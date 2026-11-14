@@ -472,6 +472,7 @@ void hostMetaSetParam(void* metaBuilder, int paramId, const PsynParamDesc* desc)
     p.midiCC = (desc->midi_cc != 0xFFu) ? tiny::optional<uint8_t, 0xff>(desc->midi_cc)
                                         : std::nullopt;
     p.invalidatesOtherMetadata = (desc->invalidates_metadata != 0);
+    p.inputSource = static_cast<int>(desc->input_source) - 1;
 
     int pluginIdx = ctx->pluginIdx;
     p.valueFormatter = [pluginIdx, paramId](const Patch& patch,
@@ -1289,7 +1290,7 @@ class PsynVoiceWrapper : public InstrumentVoice
     }
 
     void renderVoiceAudio(const InstrumentVoiceContext& ctx,
-                          std::optional<AudioBufferStereoRef> /*inputBuffer*/,
+                          std::optional<AudioBufferStereoRef> inputBuffer,
                           AudioBufferStereoRef outputBuffer,
                           std::span<AudioBufferRef> auxOutBuffer)
     {
@@ -1310,6 +1311,19 @@ class PsynVoiceWrapper : public InstrumentVoice
             .tempo = ctx.tempo,
             .pitchbend_range_semitones = ctx.pitchbendRangeSemitones,
         };
+        if ((pluginRecord()->header.flags & PSYN_FLAG_AUDIO_INPUT) != 0 &&
+            api->voice_render_audio_in != nullptr)
+        {
+            PsynAudioInput in{};
+            if (inputBuffer)
+            {
+                in.left = (*inputBuffer)[0].data();
+                in.right = (*inputBuffer)[1].data();
+            }
+            api->voice_render_audio_in(
+              pluginVoice_, &pctx, &in, outputBuffer[0].data(), outputBuffer[1].data());
+            return;
+        }
         float* auxPtrs[2] = {
             auxOutBuffer.size() > 0 ? auxOutBuffer[0].data() : nullptr,
             auxOutBuffer.size() > 1 ? auxOutBuffer[1].data() : nullptr,
