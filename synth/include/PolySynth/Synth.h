@@ -126,13 +126,15 @@ class Synth
 
     /**
      * Fill audio buffer with single instrument output.
-     * Instruments that consume audio (see Patch::Metadata::Param::inputSource) receive inputBuffer.
+     * Instruments that consume audio (see Patch::Metadata::Param::inputSource) receive inputBuffer
+     * and sidechainBuffer.
      * Called directly from the audio thread.
      */
     virtual void renderAudioBuffer(AudioBufferStereoRef bufferMain,
                                    std::span<AudioBufferRef> bufferAux,
                                    int instrumentId,
-                                   std::optional<AudioBufferStereoRef> inputBuffer = std::nullopt) = 0;
+                                   std::optional<AudioBufferStereoRef> inputBuffer = std::nullopt,
+                                   std::optional<AudioBufferStereoRef> sidechainBuffer = std::nullopt) = 0;
 #endif
 
     /**

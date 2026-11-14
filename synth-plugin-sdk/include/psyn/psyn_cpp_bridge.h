@@ -644,6 +644,7 @@ class PluginAdapter
             desc.midi_cc = p.midiCC.has_value() ? *p.midiCC : 0xFF;
             desc.invalidates_metadata = p.invalidatesOtherMetadata ? 1 : 0;
             desc.input_source = static_cast<uint8_t>(p.inputSource + 1);
+            desc.input_sidechain = p.inputSidechain ? 1 : 0;
             g_host->meta_set_param(metaBuilder, i, &desc);
             s_formatters[i] = p.valueFormatter;
         }
@@ -855,15 +856,25 @@ class PluginAdapter
             polysynth::AudioBufferRef(outLeft, polysynth::kAudioBufferSize),
             polysynth::AudioBufferRef(outRight, polysynth::kAudioBufferSize),
         };
-        std::optional<polysynth::AudioBufferStereoRef> inBuffer;
-        if (in != nullptr && in->left != nullptr && in->right != nullptr)
+        auto toBuffer = [](const float* left, const float* right)
         {
-            inBuffer = polysynth::AudioBufferStereoRef{
-                polysynth::AudioBufferRef(const_cast<float*>(in->left),
-                                          polysynth::kAudioBufferSize),
-                polysynth::AudioBufferRef(const_cast<float*>(in->right),
-                                          polysynth::kAudioBufferSize),
-            };
+            std::optional<polysynth::AudioBufferStereoRef> buffer;
+            if (left != nullptr && right != nullptr)
+            {
+                buffer = polysynth::AudioBufferStereoRef{
+                    polysynth::AudioBufferRef(const_cast<float*>(left),
+                                              polysynth::kAudioBufferSize),
+                    polysynth::AudioBufferRef(const_cast<float*>(right),
+                                              polysynth::kAudioBufferSize),
+                };
+            }
+            return buffer;
+        };
+        std::optional<polysynth::AudioBufferStereoRef> inBuffer;
+        if (in != nullptr)
+        {
+            inBuffer = toBuffer(in->left, in->right);
+            vctx.sidechainBuffer = toBuffer(in->sidechain_left, in->sidechain_right);
         }
         if constexpr (requires {
                           holder->voice.renderVoiceAudio(

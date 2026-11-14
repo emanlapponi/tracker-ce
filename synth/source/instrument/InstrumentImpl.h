@@ -70,7 +70,8 @@ class InstrumentImpl final
     void onPatchReset() override;
     void renderAudioBuffer(std::optional<AudioBufferStereoRef> inputBuffer,
                            AudioBufferStereoRef outputBuffer,
-                           std::span<AudioBufferRef> auxOutBuffer);
+                           std::span<AudioBufferRef> auxOutBuffer,
+                           std::optional<AudioBufferStereoRef> sidechainBuffer = std::nullopt);
 
     void onMidiEvent(const MidiEvent& event, MidiSource::Type sourceType, int sourceId);
 

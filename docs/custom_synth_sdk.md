@@ -103,6 +103,7 @@ Engines packaged with `--audio-input 1` (`PSYN_FLAG_AUDIO_INPUT`) receive host a
 - **Source params**: Set `Patch::Metadata::Param::inputSource` (`input_source` in `PsynParamDesc`) on an on/off param. While its value is above `0.5`, the host sums that source into the engine input and removes it from its normal mix. Source ids are `n` for sample track `n` (`0`-`7`, tapped after the track volume, panning and filter, so those controls also scale the engine input) and `Param::kInputSourceSynthBase + n` for synth part `n`.
 - **Render order**: A part only receives synth parts before it (`SYN 1` can feed `SYN 2` or `SYN 3`, never the reverse). Params naming unavailable sources are ignored.
 - **Input buffer**: Delivered as the `inputBuffer` argument of `renderVoiceAudio` (C++) or `PsynAudioInput` of `voice_render_audio_in` (Pure C, appended to `PsynPluginApi`). It is empty when nothing is routed.
+- **Sidechain**: Set `Param::inputSidechain` (`input_sidechain` in `PsynParamDesc`) on a source param to sum it into `InstrumentVoiceContext::sidechainBuffer` (`sidechain_left` / `sidechain_right` in `PsynAudioInput`) instead. Sidechain sources stay in the normal mix, which allows ducking a bus from a track like a kick. The buffer is empty when no sidechain source is routed.
 - **Voices**: Set `metadata.maxVoices = 1` (and `--max-voices 1`), otherwise the input is processed once per voice.
 - **Sends**: A routed source keeps its delay/reverb sends. Routed tracks still appear in their own stems.
 

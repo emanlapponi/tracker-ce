@@ -146,6 +146,9 @@ class Patch : private boost::noncopyable
              */
             static constexpr int kInputSourceSynthBase = 8;
             int inputSource = -1;
+            // Routes the source to the voice sidechain (InstrumentVoiceContext::sidechainBuffer)
+            // instead of its input, and leaves it in the normal mix.
+            bool inputSidechain = false;
         };
 
         struct Macro

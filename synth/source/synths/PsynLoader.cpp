@@ -473,6 +473,7 @@ void hostMetaSetParam(void* metaBuilder, int paramId, const PsynParamDesc* desc)
                                         : std::nullopt;
     p.invalidatesOtherMetadata = (desc->invalidates_metadata != 0);
     p.inputSource = static_cast<int>(desc->input_source) - 1;
+    p.inputSidechain = (desc->input_sidechain != 0);
 
     int pluginIdx = ctx->pluginIdx;
     p.valueFormatter = [pluginIdx, paramId](const Patch& patch,
@@ -1319,6 +1320,11 @@ class PsynVoiceWrapper : public InstrumentVoice
             {
                 in.left = (*inputBuffer)[0].data();
                 in.right = (*inputBuffer)[1].data();
+            }
+            if (ctx.sidechainBuffer)
+            {
+                in.sidechain_left = (*ctx.sidechainBuffer)[0].data();
+                in.sidechain_right = (*ctx.sidechainBuffer)[1].data();
             }
             api->voice_render_audio_in(
               pluginVoice_, &pctx, &in, outputBuffer[0].data(), outputBuffer[1].data());

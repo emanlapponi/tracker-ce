@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AudioStream.h"
+#include <array>
 
 class Synth;
 
@@ -24,10 +25,18 @@ class PolySynth : public AudioStream
     static constexpr int kRightChannelOffset = kSynthParts;
 
   private:
+    enum BusChannel
+    {
+        kBusInput,
+        kBusSidechain,
+
+        kBusChannelCount
+    };
+
     struct BusRoute
     {
         bool isBus = false;
-        uint16_t sources = 0;
+        std::array<uint16_t, kBusChannelCount> sources = {};
     };
 
     BusRoute getBusRoute(int partIdx) const;

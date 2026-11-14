@@ -21,6 +21,11 @@ constexpr int kSynthSourceBase = polysynth::Patch::Metadata::Param::kInputSource
 static_assert(kSynthSourceBase == PolySynth::kTrackInputs);
 using BusInput = std::array<std::array<polysynth::sample_t, polysynth::kAudioBufferSize>, 2>;
 
+polysynth::AudioBufferStereoRef toStereoRef(BusInput& input)
+{
+    return { input[0], input[1] };
+}
+
 void addToBusInput(BusInput& input, const audio_block_t* left, const audio_block_t* right)
 {
     if (left == NULL)
@@ -93,18 +98,21 @@ AUDIO_CORE_RAM void PolySynth::renderParts(audio_block_t* const* trackBlocks)
 
     static std::array<std::array<polysynth::sample_t, polysynth::kAudioBufferSize>, 2> tempBufSend;
 
-    static std::array<BusInput, kSynthParts> tempBufBusInput;
+    static std::array<std::array<BusInput, kBusChannelCount>, kSynthParts> tempBufBus;
 
     std::array<BusRoute, kSynthParts> routes;
     uint16_t routedSources = 0;
     for (int partIdx = 0; partIdx < kSynthParts; partIdx++)
     {
         routes[partIdx] = getBusRoute(partIdx);
-        routedSources |= routes[partIdx].sources;
+        routedSources |= routes[partIdx].sources[kBusInput];
         if (routes[partIdx].isBus)
         {
-            tempBufBusInput[partIdx][0].fill(0.0f);
-            tempBufBusInput[partIdx][1].fill(0.0f);
+            for (auto& input : tempBufBus[partIdx])
+            {
+                input[0].fill(0.0f);
+                input[1].fill(0.0f);
+            }
         }
     }
     routedTracks = routedSources & ((1u << kTrackInputs) - 1);
@@ -181,27 +189,35 @@ AUDIO_CORE_RAM void PolySynth::renderParts(audio_block_t* const* trackBlocks)
                                                                        tempBufSend[1] };
 
         std::optional<polysynth::AudioBufferStereoRef> busInput;
+        std::optional<polysynth::AudioBufferStereoRef> busSidechain;
         if (routes[partIdx].isBus)
         {
-            for (int track = 0; track < kTrackInputs; track++)
+            for (int channel = 0; channel < kBusChannelCount; channel++)
             {
-                if (routes[partIdx].sources & (1u << track))
+                for (int track = 0; track < kTrackInputs; track++)
                 {
-                    addToBusInput(tempBufBusInput[partIdx],
-                                  trackBlocks[2 * track],
-                                  trackBlocks[2 * track + 1]);
+                    if (routes[partIdx].sources[channel] & (1u << track))
+                    {
+                        addToBusInput(tempBufBus[partIdx][channel],
+                                      trackBlocks[2 * track],
+                                      trackBlocks[2 * track + 1]);
+                    }
                 }
             }
 
-            busInput = polysynth::AudioBufferStereoRef{ tempBufBusInput[partIdx][0],
-                                                        tempBufBusInput[partIdx][1] };
+            busInput = toStereoRef(tempBufBus[partIdx][kBusInput]);
+            if (routes[partIdx].sources[kBusSidechain] != 0)
+            {
+                busSidechain = toStereoRef(tempBufBus[partIdx][kBusSidechain]);
+            }
         }
 
         trackerSynth->synth->renderAudioBuffer(
           { tempBufSendsCommonLeft, tempBufSendsCommonRight },
           std::span<polysynth::AudioBufferRef>(tempSendsBufArray),
           partIdx,
-          busInput);
+          busInput,
+          busSidechain);
 
         bool budgetExceeded =
           (timer != nullptr && (timer->clockCycles() - startCycles) > maxCycles);
@@ -314,11 +330,14 @@ AUDIO_CORE_RAM void PolySynth::renderParts(audio_block_t* const* trackBlocks)
         const uint16_t sourceBit = 1u << (kSynthSourceBase + partIdx);
         for (int busIdx = partIdx + 1; busIdx < kSynthParts; busIdx++)
         {
-            if (routes[busIdx].sources & sourceBit)
+            for (int channel = 0; channel < kBusChannelCount; channel++)
             {
-                addToBusInput(tempBufBusInput[busIdx],
-                              blockPostFaderLeft,
-                              isStereo ? blockPostFaderRight : blockPostFaderLeft);
+                if (routes[busIdx].sources[channel] & sourceBit)
+                {
+                    addToBusInput(tempBufBus[busIdx][channel],
+                                  blockPostFaderLeft,
+                                  isStereo ? blockPostFaderRight : blockPostFaderLeft);
+                }
             }
         }
 
@@ -362,7 +381,8 @@ PolySynth::BusRoute PolySynth::getBusRoute(int partIdx) const
         const bool isAvailable = source < kSynthSourceBase || source - kSynthSourceBase < partIdx;
         if (isAvailable && part.patch->getParamFinalValue(paramId).value_or(0.0f) > 0.5f)
         {
-            route.sources |= 1u << source;
+            route.sources[params[paramId].inputSidechain ? kBusSidechain : kBusInput] |=
+              1u << source;
         }
     }
     return route;

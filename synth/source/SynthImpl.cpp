@@ -198,9 +198,11 @@ void SynthImpl::renderAudioBuffer(AudioBufferStereoRef buffer)
 void SynthImpl::renderAudioBuffer(AudioBufferStereoRef bufferMain,
                                   std::span<AudioBufferRef> bufferAux,
                                   int instrumentId,
-                                  std::optional<AudioBufferStereoRef> inputBuffer)
+                                  std::optional<AudioBufferStereoRef> inputBuffer,
+                                  std::optional<AudioBufferStereoRef> sidechainBuffer)
 {
-    instruments[instrumentId]->impl->renderAudioBuffer(inputBuffer, bufferMain, bufferAux);
+    instruments[instrumentId]->impl->renderAudioBuffer(
+      inputBuffer, bufferMain, bufferAux, sidechainBuffer);
 }
 
 void SynthImpl::updateAudio()

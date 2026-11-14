@@ -28,6 +28,17 @@ enum class BusParamId : int
     kTrack6,
     kTrack7,
     kTrack8,
+    kSidechainTrack1,
+    kSidechainTrack2,
+    kSidechainTrack3,
+    kSidechainTrack4,
+    kSidechainTrack5,
+    kSidechainTrack6,
+    kSidechainTrack7,
+    kSidechainTrack8,
+    kSidechainSynth1,
+    kSidechainSynth2,
+    kSidechainSynth3,
 };
 
 static constexpr int kSynthSources = 3;
@@ -47,7 +58,8 @@ float msToCoeff(float ms)
 
 /**
  * Receives the tracks and synth parts routed through its source params and runs them through a
- * limiter (the master limiter algorithm, in float).
+ * limiter (the master limiter algorithm, in float). The limiter reacts to the sidechain sources
+ * when any are routed, otherwise to its own input.
  */
 class BusVoice : public sdk::CustomSynthVoice<BusVoice, BusParamId>
 {
@@ -70,15 +82,15 @@ class BusVoice : public sdk::CustomSynthVoice<BusVoice, BusParamId>
         renderVoiceAudio(ctx, std::nullopt, outputBuffer, {});
     }
 
-    void renderVoiceAudio(const InstrumentVoiceContext& /*ctx*/,
+    void renderVoiceAudio(const InstrumentVoiceContext& ctx,
                           std::optional<AudioBufferStereoRef> inputBuffer,
                           AudioBufferStereoRef outputBuffer,
                           std::span<AudioBufferRef> /*auxOutBuffer*/)
     {
         for (size_t i = 0; i < kAudioBufferSize; ++i)
         {
-            const std::array<float, 2> in = { inputBuffer ? (*inputBuffer)[0][i] : 0.0f,
-                                              inputBuffer ? (*inputBuffer)[1][i] : 0.0f };
+            const std::array<float, 2> in = { sampleAt(inputBuffer, 0, i),
+                                              sampleAt(inputBuffer, 1, i) };
             if (!limiterEnabled)
             {
                 outputBuffer[0][i] = in[0];
@@ -86,7 +98,9 @@ class BusVoice : public sdk::CustomSynthVoice<BusVoice, BusParamId>
                 continue;
             }
 
-            const float peak = std::max(std::fabs(in[0]), std::fabs(in[1]));
+            const auto& detector = ctx.sidechainBuffer ? ctx.sidechainBuffer : inputBuffer;
+            const float peak =
+              std::max(std::fabs(sampleAt(detector, 0, i)), std::fabs(sampleAt(detector, 1, i)));
             peakFollower += (peak > peakFollower ? attackCoeff : releaseCoeff) *
                             (peak - peakFollower);
 
@@ -119,13 +133,24 @@ class BusVoice : public sdk::CustomSynthVoice<BusVoice, BusParamId>
             addSourceParam(helper,
                            *BusParamId::kSynth1 + i,
                            fmt::format("Synth {}", i + 1),
-                           Patch::Metadata::Param::kInputSourceSynthBase + i);
+                           Patch::Metadata::Param::kInputSourceSynthBase + i,
+                           false);
+            addSourceParam(helper,
+                           *BusParamId::kSidechainSynth1 + i,
+                           fmt::format("SC Synth {}", i + 1),
+                           Patch::Metadata::Param::kInputSourceSynthBase + i,
+                           true);
         }
 
         for (int i = 0; i < kTrackSources; ++i)
         {
             addSourceParam(
-              helper, *BusParamId::kTrack1 + i, fmt::format("Track {}", i + 1), i);
+              helper, *BusParamId::kTrack1 + i, fmt::format("Track {}", i + 1), i, false);
+            addSourceParam(helper,
+                           *BusParamId::kSidechainTrack1 + i,
+                           fmt::format("SC Track {}", i + 1),
+                           i,
+                           true);
         }
 
         helper.addParam(
@@ -186,20 +211,27 @@ class BusVoice : public sdk::CustomSynthVoice<BusVoice, BusParamId>
           { voice.releaseCoeff = msToCoeff(*val); });
 
         Patch::Metadata::EditorLayout::EditorSection mixer{ .name = "Mixer", .shortName = "Mixer" };
+        Patch::Metadata::EditorLayout::EditorSection sidechain{ .name = "Sidechain",
+                                                                .shortName = "SC" };
         for (int i = 0; i < kTrackSources; ++i)
         {
             mixer.elements.push_back(
               { .type = EditorElement::Type::kParam, .id = *BusParamId::kTrack1 + i });
+            sidechain.elements.push_back(
+              { .type = EditorElement::Type::kParam, .id = *BusParamId::kSidechainTrack1 + i });
         }
         for (int i = 0; i < kSynthSources; ++i)
         {
             mixer.elements.push_back(
               { .type = EditorElement::Type::kParam, .id = *BusParamId::kSynth1 + i });
+            sidechain.elements.push_back(
+              { .type = EditorElement::Type::kParam, .id = *BusParamId::kSidechainSynth1 + i });
         }
 
         metadata.layoutFlat = Patch::Metadata::EditorLayout{
             .sections = {
               std::move(mixer),
+              std::move(sidechain),
               {
                 .name = "FX",
                 .shortName = "FX",
@@ -223,7 +255,8 @@ class BusVoice : public sdk::CustomSynthVoice<BusVoice, BusParamId>
     static void addSourceParam(sdk::ParamHelper<BusVoice>& helper,
                                int paramId,
                                std::string name,
-                               int inputSource)
+                               int inputSource,
+                               bool isSidechain)
     {
         helper.addParam(
           paramId,
@@ -235,8 +268,14 @@ class BusVoice : public sdk::CustomSynthVoice<BusVoice, BusParamId>
             .isEnum = true,
             .valueFormatter = formatOnOff,
             .inputSource = inputSource,
+            .inputSidechain = isSidechain,
           },
           [](auto& /*voice*/, Patch::optional_paramvalue_t /*val*/) {});
+    }
+
+    static float sampleAt(const std::optional<AudioBufferStereoRef>& buffer, size_t channel, size_t i)
+    {
+        return buffer ? (*buffer)[channel][i] : 0.0f;
     }
 
     static constexpr size_t kLimiterDelay = 5;
