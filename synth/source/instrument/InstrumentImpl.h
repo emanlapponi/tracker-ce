@@ -71,7 +71,7 @@ class InstrumentImpl final
     void renderAudioBuffer(std::optional<AudioBufferStereoRef> inputBuffer,
                            AudioBufferStereoRef outputBuffer,
                            std::span<AudioBufferRef> auxOutBuffer,
-                           std::optional<AudioBufferStereoRef> sidechainBuffer = std::nullopt);
+                           std::optional<AudioBufferRef> sidechainBuffer = std::nullopt);
 
     void onMidiEvent(const MidiEvent& event, MidiSource::Type sourceType, int sourceId);
 

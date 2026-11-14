@@ -60,7 +60,7 @@ class SynthImpl
                            std::span<AudioBufferRef> bufferAux,
                            int instrumentId,
                            std::optional<AudioBufferStereoRef> inputBuffer,
-                           std::optional<AudioBufferStereoRef> sidechainBuffer) override;
+                           std::optional<AudioBufferRef> sidechainBuffer) override;
 
     void updateAudio() override;
     void updateMain() override;

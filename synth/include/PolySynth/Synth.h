@@ -134,7 +134,7 @@ class Synth
                                    std::span<AudioBufferRef> bufferAux,
                                    int instrumentId,
                                    std::optional<AudioBufferStereoRef> inputBuffer = std::nullopt,
-                                   std::optional<AudioBufferStereoRef> sidechainBuffer = std::nullopt) = 0;
+                                   std::optional<AudioBufferRef> sidechainBuffer = std::nullopt) = 0;
 #endif
 
     /**

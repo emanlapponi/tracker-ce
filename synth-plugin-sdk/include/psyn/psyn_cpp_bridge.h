@@ -874,7 +874,11 @@ class PluginAdapter
         if (in != nullptr)
         {
             inBuffer = toBuffer(in->left, in->right);
-            vctx.sidechainBuffer = toBuffer(in->sidechain_left, in->sidechain_right);
+            if (in->sidechain != nullptr)
+            {
+                vctx.sidechainBuffer = polysynth::AudioBufferRef(
+                  const_cast<float*>(in->sidechain), polysynth::kAudioBufferSize);
+            }
         }
         if constexpr (requires {
                           holder->voice.renderVoiceAudio(

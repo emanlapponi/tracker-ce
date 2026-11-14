@@ -58,8 +58,8 @@ float msToCoeff(float ms)
 
 /**
  * Receives the tracks and synth parts routed through its source params and runs them through a
- * limiter (the master limiter algorithm, in float). The limiter reacts to the sidechain sources
- * when any are routed, otherwise to its own input.
+ * limiter (the master limiter algorithm, in float). The limiter reacts to the summed mono
+ * sidechain sources when any are routed, otherwise to its own stereo input.
  */
 class BusVoice : public sdk::CustomSynthVoice<BusVoice, BusParamId>
 {
@@ -98,9 +98,8 @@ class BusVoice : public sdk::CustomSynthVoice<BusVoice, BusParamId>
                 continue;
             }
 
-            const auto& detector = ctx.sidechainBuffer ? ctx.sidechainBuffer : inputBuffer;
-            const float peak =
-              std::max(std::fabs(sampleAt(detector, 0, i)), std::fabs(sampleAt(detector, 1, i)));
+            const float peak = ctx.sidechainBuffer ? std::fabs((*ctx.sidechainBuffer)[i])
+                                                   : std::max(std::fabs(in[0]), std::fabs(in[1]));
             peakFollower += (peak > peakFollower ? attackCoeff : releaseCoeff) *
                             (peak - peakFollower);
 

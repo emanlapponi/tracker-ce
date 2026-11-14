@@ -199,7 +199,7 @@ void SynthImpl::renderAudioBuffer(AudioBufferStereoRef bufferMain,
                                   std::span<AudioBufferRef> bufferAux,
                                   int instrumentId,
                                   std::optional<AudioBufferStereoRef> inputBuffer,
-                                  std::optional<AudioBufferStereoRef> sidechainBuffer)
+                                  std::optional<AudioBufferRef> sidechainBuffer)
 {
     instruments[instrumentId]->impl->renderAudioBuffer(
       inputBuffer, bufferMain, bufferAux, sidechainBuffer);

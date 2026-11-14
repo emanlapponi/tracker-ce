@@ -17,7 +17,7 @@ class InstrumentVoice
     {
         float tempo;
         float pitchbendRangeSemitones = 2.0f;
-        std::optional<AudioBufferStereoRef> sidechainBuffer = std::nullopt;
+        std::optional<AudioBufferRef> sidechainBuffer = std::nullopt;
 
         bool operator==(const InstrumentVoiceContext& rhs) const { return tempo == rhs.tempo; }
         bool operator!=(const InstrumentVoiceContext& rhs) const { return !(rhs == *this); }

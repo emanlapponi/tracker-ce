@@ -96,15 +96,14 @@ typedef struct PsynVoiceContext
  * A param with a non-zero PsynParamDesc::input_source routes that host source into the engine
  * while the param value is above 0.5. Source ids: 0..7 sample tracks, 8..10 synth parts
  * (only parts before the engine's own part are available).
- * Sidechain sources are summed separately and stay in the normal mix.
+ * Sidechain sources are summed to mono separately and stay in the normal mix.
  * Buffers hold 128 samples. Pointers are NULL when nothing is routed.
  */
 typedef struct PsynAudioInput
 {
     const float* left;
     const float* right;
-    const float* sidechain_left;
-    const float* sidechain_right;
+    const float* sidechain;
 } PsynAudioInput;
 
 typedef struct PsynSampleData

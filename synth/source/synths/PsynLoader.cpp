@@ -1323,8 +1323,7 @@ class PsynVoiceWrapper : public InstrumentVoice
             }
             if (ctx.sidechainBuffer)
             {
-                in.sidechain_left = (*ctx.sidechainBuffer)[0].data();
-                in.sidechain_right = (*ctx.sidechainBuffer)[1].data();
+                in.sidechain = ctx.sidechainBuffer->data();
             }
             api->voice_render_audio_in(
               pluginVoice_, &pctx, &in, outputBuffer[0].data(), outputBuffer[1].data());
