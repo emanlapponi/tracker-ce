@@ -44,6 +44,11 @@
 	* Added an opt-in USB CDC serial console (`ENABLE_DEV_CONSOLE` when a `/.develop` file is present on the SD card) with host automation commands (`ping`, `storage on|off`, `flash <name>`, `reboot`, `help`) and a ring-buffered `ENABLE_LOG` build flag that preserves release optimization levels.
 	* With `ENABLE_DEV_CONSOLE`, CPU faults report `@fault pc=... lr=...` and a rough call chain over the serial console instead of freezing silently. See [`docs/developer_guide.md`](docs/developer_guide.md).
 
+9. **`BUS` Insert Effect Engine & Synth SDK Audio Input (Tracker+ & Tracker Mini)**
+	* Added **`BUS`** (`/Synths/BUS.psyn`), an insert effect synth that takes over selected sample tracks and lower-numbered synth parts instead of mixing them directly, and runs them through a limiter (`Threshold`, `Attack`, `Release`).
+	* **Sidechain Ducking**: A separate `Sidechain` section drives the limiter from other tracks or synths (summed to mono) while they stay in the normal mix, so a kick can duck a pad.
+	* **Plugin Audio Input**: `.psyn` engines packaged with `--audio-input 1` now receive host audio through `voice_render_audio_in`, and choose their own routed sources from patch params. Existing plugins are unaffected. See [`docs/custom_synth_sdk.md`](docs/custom_synth_sdk.md).
+
 ### Changed & Fixed
 
 * **Faster UI Rendering & System Responsiveness (All 3 Devices)**:
