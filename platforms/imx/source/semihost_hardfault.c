@@ -68,8 +68,16 @@ void HardFault_Handler(void){
             "B  _process      \n"
             "_MSP:  \n"
             "MRS    R0, MSP \n"
-        // Load the instruction that triggered hard fault
         "_process:     \n"
+#if defined (ENABLE_DEV_CONSOLE)
+        // The development console tells a semihosting instruction from a
+        // real fault itself: it must not read the faulting address before
+        // checking it, and it reports a real fault instead of hanging.
+            "PUSH   {R4, LR} \n"
+            "BL     DevConsole_HardFault \n"
+            "POP    {R4, PC} \n"
+#else
+        // Load the instruction that triggered hard fault
             "LDR    R1,[R0,#24] \n"
             "LDRH    R2,[r1] \n"
         // Semihosting instruction is "BKPT 0xAB" (0xBEAB)
@@ -91,6 +99,7 @@ void HardFault_Handler(void){
     		    "STR R1,[ R0,#0 ] \n" // R0 is at location 0 on stack
     	// Return from hard fault handler to application
             "BX LR \n"
+#endif
         ".syntax divided\n") ;
 }
 

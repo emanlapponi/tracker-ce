@@ -38,30 +38,21 @@ class DisplayDriverImpl : public DisplayDriver
     virtual uint8_t sendString(const char* string, uint32_t length) override;
     virtual void writeDataToCMD(const uint8_t* imgData, uint32_t totalDataSize) override;
 
-    // stream
-    virtual void initStreamDma(uint16_t byteResolution,
-                               uint16_t streamWidth,
-                               uint16_t streamHeight,
-                               uint8_t* streamBuf,
-                               uint32_t destMemAddress) override;
-    virtual bool updateStreamDma(bool lastFrame) override;
-    virtual void stopStreamDma() override;
+    virtual void writeDisplayList(uint32_t offset, const uint32_t* words, uint32_t count) override;
+    virtual bool writesDisplayListInBackground() override { return true; }
+    virtual void startDisplayListWrite(uint32_t offset,
+                                       const uint32_t* words,
+                                       uint32_t count) override;
+    virtual bool isDisplayListWriteDone() override;
+    virtual void swapDisplayList() override;
+    virtual bool isDisplayListSwapPending() override;
 
     void init(SpiBus* spi);
-    static void setUpdateDmaStep(int step) { streamUpdateStep = step; };
 
   protected:
-    bool streamInitialized = false;
-    static uint8_t streamUpdateStep;
-    uint32_t streamBufDestMemAddress;
-    uint32_t screenBuffSize;
-    uint8_t* screenBuff;
-
     uint16_t cmdOffset = 0x0000;
 
     SpiBus* spi;
-
-    void sendDataDma();
 };
 
 #endif /* INCLUDE_DISPLAYDRIVERIMPL_H_ */

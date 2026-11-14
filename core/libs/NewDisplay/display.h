@@ -83,6 +83,7 @@ class cDisplay
         }
 
         *newControlSlot = new controlClass(properties);
+        (*newControlSlot)->fragment = takeFragment();
 
         return limit;
     }
@@ -144,22 +145,6 @@ class cDisplay
     void turnOn();
     void turnOff();
 
-    //
-    void startVideoStream();
-    void updateVideoStream(bool lastFrame);
-    void stopVideoStream();
-
-    bool showVideoStreamFrame();
-    uint16_t* getLineBuffer(int j);
-    void writeScreen(int width, int height, int stride, uint8_t* buf, uint16_t* palette16);
-    void writeLine(int width,
-                   int height,
-                   int stride,
-                   uint8_t* buf,
-                   uint8_t* palette8,
-                   uint16_t* palette16);
-    static uint16_t* getFrameBuffer(void);
-
     void setTheme(uint8_t index);
     void setCustomTheme(const Theme& customTheme);
     void setFont(uint8_t index);
@@ -167,16 +152,34 @@ class cDisplay
 
     void showBatteryScreen(bool empty, bool charging, int8_t level, float voltage);
 
+    // A frame drawn outside the controls, such as the test screens: the
+    // API_* calls between the two make up the frame, and showScreen() puts
+    // it on screen before it returns.
+    void beginScreen();
+    void showScreen();
+
     DisplayDriver* getDisplayDriver() { return displayDriver; }
+    // The frame that was composed last, for checking what reached the chip.
+    const uint32_t* composedFrame(uint32_t& words) const;
 
     Theme& getTheme() { return *((Theme*)theme); }
 
-  private:
-    void step1();
-    void step2();
-    void step3();
 
-    bool validateCurrentUpdateData();
+  private:
+
+    bool readyForFrame();
+    void renderFrame(uint32_t buildBudgetUs, uint32_t uploadWords);
+    void buildControl(hControl handle);
+    uint32_t composeFrame();
+    void showFrame(uint32_t count, uint32_t uploadWords);
+    void continueUpload(uint32_t maxWords);
+    void findChangedRuns(uint32_t count);
+    void forgetChipLists();
+    void waitForChip();
+    void bindFonts();
+    int8_t takeFragment();
+    void releaseFragment(cDisplayControl* control);
+    static const uint8_t* fontMetrics(uint8_t handle);
 
     void loadFont(const CompressedFontData* fontsData, uint8_t fontCount);
     uint8_t* decompressFont(const CompressedFontData* compressedFontData);
@@ -188,14 +191,35 @@ class cDisplay
     uint8_t state = 1;
 
     cDisplayControl* controlsTable[controlsCount] = { nullptr };
-    cDisplayControl* actualUpdating;
-    int8_t actualUpdatingIndex;
-    uint8_t actualUpdatingStage;
-    uint8_t updateStep;
-    bool freshControl;
+    // Set when the frame has to be composed again although no control is
+    // waiting to be built.
+    bool composePending = false;
+    uint16_t composedWords = 0;
+    // A frame is spread over several passes of the main loop: first the
+    // queued controls up to frameQueueEnd are built, then the changed
+    // stretches of the composed frame are sent, and then the chip is told to
+    // swap its lists.
+    static constexpr uint8_t kMaxUploadRuns = 24;
+    struct UploadRun
+    {
+        uint16_t start;
+        uint16_t end;
+    };
+    bool frameBuilding = false;
+    uint8_t frameQueueEnd = 0;
+    UploadRun uploadRuns[kMaxUploadRuns];
+    uint8_t uploadRunCount = 0;
+    uint8_t uploadRun = 0;
+    uint16_t uploadNext = 0;
+    // The frame in frameWords is still on its way to the chip.
+    bool uploadSwaps = false;
+    bool swapInFlight = false;
+    uint32_t swapPolledAt = 0;
+    // Which of the chip's two display-list buffers the next frame goes to,
+    // and how many words of each are known (see chipLists in display.cpp).
+    uint8_t backList = 0;
+    uint16_t chipListWords[2] = { 0, 0 };
 
-    bool stopAppend;
-    uint8_t synchQueuePosition;
     hControl refreshQueue[controlsRefreshQueueSize]; // FIFO
     uint8_t refreshQueueTop;
     uint8_t refreshQueueBott;

@@ -206,11 +206,7 @@ void cLabel::update()
 
         API_BITMAP_SIZE(NEAREST, BORDER, BORDER, font->height, font->height);
 
-        API_CMD_LOADIDENTITY();
-        API_CMD_TRANSLATE(65536 * (font->height / 2), 65536 * (font->height / 2));
-        API_CMD_ROTATE(270 * 65536 / 360);
-        API_CMD_TRANSLATE(65536 * (-font->height / 2), 65536 * (-font->height / 2));
-        API_CMD_SETMATRIX();
+        API_BITMAP_ROTATE_270(font->height);
 
         uint8_t strPtr = 0;
         int16_t x = posX, y = posY;

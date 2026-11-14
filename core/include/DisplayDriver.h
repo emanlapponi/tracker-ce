@@ -28,13 +28,25 @@ class DisplayDriver
     virtual uint8_t sendString(const char* string, uint32_t length) = 0;
     virtual void writeDataToCMD(const uint8_t* imgData, uint32_t totalDataSize) = 0;
 
-    virtual void initStreamDma(uint16_t byteResolution,
-                               uint16_t streamWidth,
-                               uint16_t streamHeight,
-                               uint8_t* streamBuf,
-                               uint32_t destMemAddress) = 0;
-    virtual bool updateStreamDma(bool lastFrame) = 0;
-    virtual void stopStreamDma() = 0;
+    // Direct access to the chip's display-list memory, bypassing the
+    // coprocessor. `offset` is in bytes from the start of the list. A swap
+    // takes effect at the next frame of the panel; until then the list memory
+    // must not be written.
+    virtual void writeDisplayList(uint32_t offset, const uint32_t* words, uint32_t count) = 0;
+    // A driver that can send in the background (DMA) returns true from
+    // writesDisplayListInBackground(). A write started with
+    // startDisplayListWrite() then goes on after the call returns; `words`
+    // must stay valid and the list must not be swapped until
+    // isDisplayListWriteDone() says so. Other use of the driver in between
+    // waits for the write to finish.
+    virtual bool writesDisplayListInBackground() { return false; }
+    virtual void startDisplayListWrite(uint32_t offset, const uint32_t* words, uint32_t count)
+    {
+        writeDisplayList(offset, words, count);
+    }
+    virtual bool isDisplayListWriteDone() { return true; }
+    virtual void swapDisplayList() = 0;
+    virtual bool isDisplayListSwapPending() = 0;
 
   protected:
     void startCoProList()

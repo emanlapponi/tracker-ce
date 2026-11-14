@@ -37,7 +37,47 @@ RE-CERTIFICATION AS A RESULT OF MAKING THESE CHANGES.
 */
 
 #include "FT812.h"
+#include "DisplayList.h"
 #include "display.h"
+
+// Coprocessor commands go to the chip's command FIFO. During a capture there
+// is no open FIFO transaction, so a command that has no expansion in
+// DisplayList is dropped and counted rather than sent.
+// A display-list word goes to the list being captured, or else into the
+// coprocessor's command stream, which passes it on to the list it builds.
+static void listWord(uint32_t word)
+{
+    if (displayList::capturing())
+    {
+        displayList::put(word);
+        return;
+    }
+    display.getDisplayDriver()->WriteData32(word);
+    display.getDisplayDriver()->IncCMDOffset(4);
+}
+
+static void coprocessorWrite(uint32_t word)
+{
+    if (displayList::capturing())
+    {
+        displayList::droppedCommands++;
+        return;
+    }
+    display.getDisplayDriver()->WriteData32(word);
+}
+
+static void coprocessorAdvance(uint16_t bytes)
+{
+    if (!displayList::capturing())
+    {
+        display.getDisplayDriver()->IncCMDOffset(bytes);
+    }
+}
+
+static uint32_t coprocessorString(const char* string, uint32_t length)
+{
+    return displayList::capturing() ? 0 : display.getDisplayDriver()->sendString(string, length);
+}
 
 //##############################################################################
 // Display List commands for co-processor
@@ -45,224 +85,187 @@ RE-CERTIFICATION AS A RESULT OF MAKING THESE CHANGES.
 
 void API_CLEAR_COLOR_RGB(uint8_t R, uint8_t G, uint8_t B)
 {
-    display.getDisplayDriver()->WriteData32(CLEAR_COLOR_RGB(R, G, B));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(CLEAR_COLOR_RGB(R, G, B));
 }
 
 void API_CLEAR_COLOR(uint32_t RGB)
 {
-    display.getDisplayDriver()->WriteData32((2UL << 24) | (RGB & 0x00FFFFFF));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord((2UL << 24) | (RGB & 0x00FFFFFF));
 }
 
 void API_CLEAR(uint8_t C, uint8_t S, uint8_t T)
 {
-    display.getDisplayDriver()->WriteData32(CLEAR((C & 0x01), (S & 0x01), (T & 0x01)));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(CLEAR((C & 0x01), (S & 0x01), (T & 0x01)));
 }
 
 void API_COLOR_RGB(uint8_t R, uint8_t G, uint8_t B)
 {
-    display.getDisplayDriver()->WriteData32(COLOR_RGB(R, G, B));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(COLOR_RGB(R, G, B));
 }
 
 void API_COLOR(uint32_t RGB)
 {
-    display.getDisplayDriver()->WriteData32((4UL << 24) | (RGB & 0x00FFFFFF));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord((4UL << 24) | (RGB & 0x00FFFFFF));
 }
 
 void API_VERTEX2F(int16_t x, int16_t y)
 {
-    display.getDisplayDriver()->WriteData32(VERTEX2F(x, y));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(VERTEX2F(x, y));
 }
 
 void API_VERTEX2II(uint16_t x, uint16_t y, uint8_t handle, uint8_t cell)
 {
-    display.getDisplayDriver()->WriteData32(VERTEX2II(x, y, handle, cell));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(VERTEX2II(x, y, handle, cell));
 }
 
 void API_BITMAP_HANDLE(uint8_t handle)
 {
-    display.getDisplayDriver()->WriteData32(BITMAP_HANDLE(handle));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BITMAP_HANDLE(handle));
 }
 
 void API_BITMAP_SOURCE(uint32_t addr)
 {
-    display.getDisplayDriver()->WriteData32(BITMAP_SOURCE(addr));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BITMAP_SOURCE(addr));
 }
 
 void API_BITMAP_LAYOUT(uint8_t format, uint16_t linestride, uint16_t height)
 {
-    display.getDisplayDriver()->WriteData32(BITMAP_LAYOUT(format, linestride, height));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BITMAP_LAYOUT(format, linestride, height));
 }
 
 void API_BITMAP_SIZE(uint8_t filter, uint8_t wrapx, uint8_t wrapy, uint16_t width, uint16_t height)
 {
-    display.getDisplayDriver()->WriteData32(BITMAP_SIZE(filter, wrapx, wrapy, width, height));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BITMAP_SIZE(filter, wrapx, wrapy, width, height));
 }
 
 void API_CELL(uint8_t cell)
 {
-    display.getDisplayDriver()->WriteData32(CELL(cell));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(CELL(cell));
 }
 
 void API_TAG(uint8_t s)
 {
-    display.getDisplayDriver()->WriteData32(TAG(s));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(TAG(s));
 }
 
 void API_ALPHA_FUNC(uint8_t func, uint8_t ref)
 {
-    display.getDisplayDriver()->WriteData32(ALPHA_FUNC(func, ref));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(ALPHA_FUNC(func, ref));
 }
 
 void API_STENCIL_FUNC(uint8_t func, uint8_t ref, uint8_t mask)
 {
-    display.getDisplayDriver()->WriteData32(STENCIL_FUNC(func, ref, mask));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(STENCIL_FUNC(func, ref, mask));
 }
 
 void API_BLEND_FUNC(uint8_t src, uint8_t dst)
 {
-    display.getDisplayDriver()->WriteData32(BLEND_FUNC(src, dst));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BLEND_FUNC(src, dst));
 }
 
 void API_STENCIL_OP(uint8_t sfail, uint8_t spass)
 {
-    display.getDisplayDriver()->WriteData32(STENCIL_OP(sfail, spass));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(STENCIL_OP(sfail, spass));
 }
 
 void API_POINT_SIZE(uint16_t size)
 {
-    display.getDisplayDriver()->WriteData32(POINT_SIZE(size));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(POINT_SIZE(size));
 }
 
 void API_LINE_WIDTH(uint16_t width)
 {
-    display.getDisplayDriver()->WriteData32(LINE_WIDTH(width));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(LINE_WIDTH(width));
 }
 
 void API_CLEAR_COLOR_A(uint8_t alpha)
 {
-    display.getDisplayDriver()->WriteData32(CLEAR_COLOR_A(alpha));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(CLEAR_COLOR_A(alpha));
 }
 
 void API_COLOR_A(uint8_t alpha)
 {
-    display.getDisplayDriver()->WriteData32(COLOR_A(alpha));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(COLOR_A(alpha));
 }
 
 void API_CLEAR_STENCIL(uint8_t s)
 {
-    display.getDisplayDriver()->WriteData32(CLEAR_STENCIL(s));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(CLEAR_STENCIL(s));
 }
 
 void API_CLEAR_TAG(uint8_t s)
 {
-    display.getDisplayDriver()->WriteData32(CLEAR_TAG(s));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(CLEAR_TAG(s));
 }
 
 void API_STENCIL_MASK(uint8_t mask)
 {
-    display.getDisplayDriver()->WriteData32(STENCIL_MASK(mask));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(STENCIL_MASK(mask));
 }
 
 void API_TAG_MASK(uint8_t mask)
 {
-    display.getDisplayDriver()->WriteData32(TAG_MASK(mask));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(TAG_MASK(mask));
 }
 
 void API_SCISSOR_XY(uint16_t x, uint16_t y)
 {
-    display.getDisplayDriver()->WriteData32(SCISSOR_XY(x, y));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(SCISSOR_XY(x, y));
 }
 
 void API_SCISSOR_SIZE(uint16_t width, uint16_t height)
 {
-    display.getDisplayDriver()->WriteData32(SCISSOR_SIZE(width, height));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(SCISSOR_SIZE(width, height));
 }
 
 void API_CALL(uint16_t dest)
 {
-    display.getDisplayDriver()->WriteData32(CALL(dest));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(CALL(dest));
 }
 
 void API_JUMP(uint16_t dest)
 {
-    display.getDisplayDriver()->WriteData32(JUMP(dest));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(JUMP(dest));
 }
 
 void API_BEGIN(uint8_t prim)
 {
-    display.getDisplayDriver()->WriteData32(BEGIN(prim));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BEGIN(prim));
 }
 
 void API_COLOR_MASK(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
-    display.getDisplayDriver()->WriteData32(COLOR_MASK(r, g, b, a));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(COLOR_MASK(r, g, b, a));
 }
 
 void API_END(void)
 {
-    display.getDisplayDriver()->WriteData32(END());
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(END());
 }
 
 void API_SAVE_CONTEXT(void)
 {
-    display.getDisplayDriver()->WriteData32(SAVE_CONTEXT());
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(SAVE_CONTEXT());
 }
 
 void API_RESTORE_CONTEXT(void)
 {
-    display.getDisplayDriver()->WriteData32(RESTORE_CONTEXT());
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(RESTORE_CONTEXT());
 }
 
 void API_RETURN(void)
 {
-    display.getDisplayDriver()->WriteData32(RETURN());
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(RETURN());
 }
 
 void API_MACRO(uint8_t m)
 {
-    display.getDisplayDriver()->WriteData32(MACRO(m));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(MACRO(m));
 }
 
 void API_DISPLAY(void)
 {
-    display.getDisplayDriver()->WriteData32(FT_DISPLAY());
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(FT_DISPLAY());
 }
 
 //##############################################################################
@@ -278,18 +281,23 @@ void API_CMD_TEXT(int16_t x,
                   const char* string,
                   uint32_t length)
 {
+    if (displayList::capturing())
+    {
+        displayList::text(x, y, font, options, string, length);
+        return;
+    }
     uint32_t command_size = 0;
     uint32_t StringLength = 0;
 
-    display.getDisplayDriver()->WriteData32(CMD_TEXT);
-    display.getDisplayDriver()->WriteData32(((uint32_t)y << 16) | (x & 0xffff));
-    display.getDisplayDriver()->WriteData32(((uint32_t)options << 16) | (font & 0xffff));
+    coprocessorWrite(CMD_TEXT);
+    coprocessorWrite(((uint32_t)y << 16) | (x & 0xffff));
+    coprocessorWrite(((uint32_t)options << 16) | (font & 0xffff));
     command_size = (command_size + 12);
 
-    StringLength = display.getDisplayDriver()->sendString(string, length);
+    StringLength = coprocessorString(string, length);
     command_size = (command_size + StringLength);
 
-    display.getDisplayDriver()->IncCMDOffset(command_size);
+    coprocessorAdvance(command_size);
 }
 
 void API_CMD_TEXT(int16_t x, int16_t y, int16_t font, uint16_t options, const char* string)
@@ -309,16 +317,16 @@ void API_CMD_BUTTON(int16_t x,
 {
     uint32_t command_size = 0, StringLength = 0;
 
-    display.getDisplayDriver()->WriteData32(CMD_BUTTON);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)h << 16) | (w & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)options << 16) | (font & 0xffff)));
+    coprocessorWrite(CMD_BUTTON);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)h << 16) | (w & 0xffff)));
+    coprocessorWrite((((uint32_t)options << 16) | (font & 0xffff)));
     command_size = (command_size + 16);
 
-    StringLength = display.getDisplayDriver()->sendString(string, 0);
+    StringLength = coprocessorString(string, 0);
     command_size = (command_size + StringLength);
 
-    display.getDisplayDriver()->IncCMDOffset(command_size);
+    coprocessorAdvance(command_size);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Keys(Ft_Gpu_Hal_Context_t *phost,ft_int16_t x, ft_int16_t y, ft_int16_t w,
@@ -334,27 +342,32 @@ void API_CMD_KEYS(int16_t x,
     //    uint32_t length = strlen(string);
     uint32_t command_size = 0, StringLength = 0;
 
-    display.getDisplayDriver()->WriteData32(CMD_KEYS);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)h << 16) | (w & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)options << 16) | (font & 0xffff)));
+    coprocessorWrite(CMD_KEYS);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)h << 16) | (w & 0xffff)));
+    coprocessorWrite((((uint32_t)options << 16) | (font & 0xffff)));
     command_size = (command_size + 16);
 
-    StringLength = display.getDisplayDriver()->sendString(string, 0);
+    StringLength = coprocessorString(string, 0);
     command_size = (command_size + StringLength);
 
-    display.getDisplayDriver()->IncCMDOffset(command_size);
+    coprocessorAdvance(command_size);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Number(Ft_Gpu_Hal_Context_t *phost,ft_int16_t x, ft_int16_t y, ft_int16_t
 // font, ft_uint16_t options, ft_int32_t n);
 void API_CMD_NUMBER(int16_t x, int16_t y, int16_t font, uint16_t options, int32_t n)
 {
-    display.getDisplayDriver()->WriteData32(CMD_NUMBER);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)options << 16) | (font & 0xffff)));
-    display.getDisplayDriver()->WriteData32(n);
-    display.getDisplayDriver()->IncCMDOffset(16);
+    if (displayList::capturing())
+    {
+        displayList::number(x, y, font, options, n);
+        return;
+    }
+    coprocessorWrite(CMD_NUMBER);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)options << 16) | (font & 0xffff)));
+    coprocessorWrite(n);
+    coprocessorAdvance(16);
 }
 
 /*
@@ -363,11 +376,11 @@ void API_CMD_NUMBER_2(int16_t x, int16_t y, int16_t font, uint16_t options, int3
     if()
 
 
-    display.getDisplayDriver()->WriteData32(CMD_NUMBER);
-    display.getDisplayDriver()->WriteData32( (((uint32_t)y<<16)|(x & 0xffff)));
-    display.getDisplayDriver()->WriteData32( (((uint32_t)options<<16)|(font&0xffff)));
-    display.getDisplayDriver()->WriteData32( n);
-    display.getDisplayDriver()->IncCMDOffset(16);
+    coprocessorWrite(CMD_NUMBER);
+    coprocessorWrite( (((uint32_t)y<<16)|(x & 0xffff)));
+    coprocessorWrite( (((uint32_t)options<<16)|(font&0xffff)));
+    coprocessorWrite( n);
+    coprocessorAdvance(16);
 
 
 }
@@ -376,8 +389,8 @@ void API_CMD_NUMBER_2(int16_t x, int16_t y, int16_t font, uint16_t options, int3
 // ft_void_t Ft_Gpu_CoCmd_LoadIdentity(Ft_Gpu_Hal_Context_t *phost);
 void API_CMD_LOADIDENTITY(void)
 {
-    display.getDisplayDriver()->WriteData32(CMD_LOADIDENTITY);
-    display.getDisplayDriver()->IncCMDOffset(4);
+    coprocessorWrite(CMD_LOADIDENTITY);
+    coprocessorAdvance(4);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Toggle(Ft_Gpu_Hal_Context_t *phost,ft_int16_t x, ft_int16_t y, ft_int16_t
@@ -393,16 +406,16 @@ void API_CMD_TOGGLE(int16_t x,
     // uint32_t length = strlen(string);
     uint32_t command_size = 0, StringLength = 0;
 
-    display.getDisplayDriver()->WriteData32(CMD_TOGGLE);
-    display.getDisplayDriver()->WriteData32(((uint32_t)y << 16) | (x & 0xffff));
-    display.getDisplayDriver()->WriteData32(((uint32_t)font << 16) | (w & 0xffff));
-    display.getDisplayDriver()->WriteData32(((uint32_t)state << 16) | options);
+    coprocessorWrite(CMD_TOGGLE);
+    coprocessorWrite(((uint32_t)y << 16) | (x & 0xffff));
+    coprocessorWrite(((uint32_t)font << 16) | (w & 0xffff));
+    coprocessorWrite(((uint32_t)state << 16) | options);
     command_size = (command_size + 16);
 
-    StringLength = display.getDisplayDriver()->sendString(string, 0);
+    StringLength = coprocessorString(string, 0);
     command_size = (command_size + StringLength);
 
-    display.getDisplayDriver()->IncCMDOffset(command_size);
+    coprocessorAdvance(command_size);
 }
 
 /* Error handling for val is not done, so better to always use range of 65535 in order that needle
@@ -419,92 +432,93 @@ void API_CMD_GAUGE(int16_t x,
                    uint16_t val,
                    uint16_t range)
 {
-    display.getDisplayDriver()->WriteData32(CMD_GAUGE);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)options << 16) | (r & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)minor << 16) | (major & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)range << 16) | (val & 0xffff)));
-    display.getDisplayDriver()->IncCMDOffset(20);
+    coprocessorWrite(CMD_GAUGE);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)options << 16) | (r & 0xffff)));
+    coprocessorWrite((((uint32_t)minor << 16) | (major & 0xffff)));
+    coprocessorWrite((((uint32_t)range << 16) | (val & 0xffff)));
+    coprocessorAdvance(20);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_RegRead(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ptr, ft_uint32_t result);
 void API_CMD_REGREAD(uint32_t ptr, uint32_t result)
 {
-    display.getDisplayDriver()->WriteData32(CMD_REGREAD);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32(0);
-    display.getDisplayDriver()->IncCMDOffset(12);
+    coprocessorWrite(CMD_REGREAD);
+    coprocessorWrite(ptr);
+    coprocessorWrite(0);
+    coprocessorAdvance(12);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_GetProps(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ptr, ft_uint32_t w,
 // ft_uint32_t h);
 void API_CMD_GETPROPS(uint32_t ptr, uint32_t w, uint32_t h)
 {
-    display.getDisplayDriver()->WriteData32(CMD_GETPROPS);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32(w);
-    display.getDisplayDriver()->WriteData32(h);
-    display.getDisplayDriver()->IncCMDOffset(16);
+    coprocessorWrite(CMD_GETPROPS);
+    coprocessorWrite(ptr);
+    coprocessorWrite(w);
+    coprocessorWrite(h);
+    coprocessorAdvance(16);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Memcpy(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t dest, ft_uint32_t src,
 // ft_uint32_t num);
 void API_CMD_MEMCPY(uint32_t dest, uint32_t src, uint32_t num)
 {
-    display.getDisplayDriver()->WriteData32(CMD_MEMCPY);
-    display.getDisplayDriver()->WriteData32(dest);
-    display.getDisplayDriver()->WriteData32(src);
-    display.getDisplayDriver()->WriteData32(num);
-    display.getDisplayDriver()->IncCMDOffset(16);
+    coprocessorWrite(CMD_MEMCPY);
+    coprocessorWrite(dest);
+    coprocessorWrite(src);
+    coprocessorWrite(num);
+    coprocessorAdvance(16);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Spinner(Ft_Gpu_Hal_Context_t *phost,ft_int16_t x, ft_int16_t y,
 // ft_uint16_t style, ft_uint16_t scale);
 void API_CMD_SPINNER(int16_t x, int16_t y, uint16_t style, uint16_t scale)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SPINNER);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)scale << 16) | (style & 0xffff)));
-    display.getDisplayDriver()->IncCMDOffset(12);
+    coprocessorWrite(CMD_SPINNER);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)scale << 16) | (style & 0xffff)));
+    coprocessorAdvance(12);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_BgColor(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t c);
 void API_CMD_BGCOLOR(uint32_t c)
 {
-    display.getDisplayDriver()->WriteData32(CMD_BGCOLOR);
-    display.getDisplayDriver()->WriteData32(c);
-    display.getDisplayDriver()->IncCMDOffset(8);
+    coprocessorWrite(CMD_BGCOLOR);
+    coprocessorWrite(c);
+    coprocessorAdvance(8);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Swap(Ft_Gpu_Hal_Context_t *phost);
 void API_CMD_SWAP(void)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SWAP);
-    display.getDisplayDriver()->IncCMDOffset(4);
+    displayList::coprocessorDrew = true;
+    coprocessorWrite(CMD_SWAP);
+    coprocessorAdvance(4);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Inflate(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ptr);
 void API_CMD_INFLATE(uint32_t ptr)
 {
-    display.getDisplayDriver()->WriteData32(CMD_INFLATE);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->IncCMDOffset(8);
+    coprocessorWrite(CMD_INFLATE);
+    coprocessorWrite(ptr);
+    coprocessorAdvance(8);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Translate(Ft_Gpu_Hal_Context_t *phost,ft_int32_t tx, ft_int32_t ty);
 void API_CMD_TRANSLATE(int32_t tx, int32_t ty)
 {
-    display.getDisplayDriver()->WriteData32(CMD_TRANSLATE);
-    display.getDisplayDriver()->WriteData32(tx);
-    display.getDisplayDriver()->WriteData32(ty);
-    display.getDisplayDriver()->IncCMDOffset(12);
+    coprocessorWrite(CMD_TRANSLATE);
+    coprocessorWrite(tx);
+    coprocessorWrite(ty);
+    coprocessorAdvance(12);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Stop(Ft_Gpu_Hal_Context_t *phost);
 void API_CMD_STOP(void)
 {
-    display.getDisplayDriver()->WriteData32(CMD_STOP);
-    display.getDisplayDriver()->IncCMDOffset(4);
+    coprocessorWrite(CMD_STOP);
+    coprocessorAdvance(4);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Slider(Ft_Gpu_Hal_Context_t *phost,ft_int16_t x, ft_int16_t y, ft_int16_t
@@ -517,82 +531,86 @@ void API_CMD_SLIDER(int16_t x,
                     uint16_t val,
                     uint16_t range)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SLIDER);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)h << 16) | (w & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)val << 16) | (options & 0xffff)));
-    display.getDisplayDriver()->WriteData32(range);
-    display.getDisplayDriver()->IncCMDOffset(20);
+    coprocessorWrite(CMD_SLIDER);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)h << 16) | (w & 0xffff)));
+    coprocessorWrite((((uint32_t)val << 16) | (options & 0xffff)));
+    coprocessorWrite(range);
+    coprocessorAdvance(20);
+}
+
+void API_BITMAP_ROTATE_270(uint16_t height)
+{
+    if (displayList::capturing())
+    {
+        displayList::rotate270(height);
+        return;
+    }
+    const uint32_t side = 2u * (height / 2);
+    listWord(BITMAP_TRANSFORM_F(0));
+    listWord(BITMAP_TRANSFORM_E(0));
+    listWord(BITMAP_TRANSFORM_D(0xFF));
+    listWord(BITMAP_TRANSFORM_C(side * 256 - 1));
+    listWord(BITMAP_TRANSFORM_B(0x1FF00));
+    listWord(BITMAP_TRANSFORM_A(0));
 }
 
 void API_BITMAP_TRANSFORM_A(long a)
 {
-    display.getDisplayDriver()->WriteData32(
-      BITMAP_TRANSFORM_A(a)); //    ((21UL<<24)|(((a)&131071UL)<<0))
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BITMAP_TRANSFORM_A(a)); //    ((21UL<<24)|(((a)&131071UL)<<0))
 }
 void API_BITMAP_TRANSFORM_B(long b)
 {
-    display.getDisplayDriver()->WriteData32(
-      BITMAP_TRANSFORM_B(b)); //  ((22UL<<24)|(((b)&131071UL)<<0))
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BITMAP_TRANSFORM_B(b)); //  ((22UL<<24)|(((b)&131071UL)<<0))
 }
 void API_BITMAP_TRANSFORM_C(long c)
 {
-    display.getDisplayDriver()->WriteData32(
-      BITMAP_TRANSFORM_C(c)); //  ((23UL<<24)|(((c)&16777215UL)<<0))
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BITMAP_TRANSFORM_C(c)); //  ((23UL<<24)|(((c)&16777215UL)<<0))
 }
 void API_BITMAP_TRANSFORM_D(long d)
 {
-    display.getDisplayDriver()->WriteData32(
-      BITMAP_TRANSFORM_D(d)); //   ((24UL<<24)|(((d)&131071UL)<<0))
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BITMAP_TRANSFORM_D(d)); //   ((24UL<<24)|(((d)&131071UL)<<0))
 }
 void API_BITMAP_TRANSFORM_E(long e)
 {
-    display.getDisplayDriver()->WriteData32(
-      BITMAP_TRANSFORM_E(e)); //   ((25UL<<24)|(((e)&131071UL)<<0))
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BITMAP_TRANSFORM_E(e)); //   ((25UL<<24)|(((e)&131071UL)<<0))
 }
 void API_BITMAP_TRANSFORM_F(long f)
 {
-    display.getDisplayDriver()->WriteData32(
-      BITMAP_TRANSFORM_F(f)); //  ((26UL<<24)|(((f)&16777215UL)<<0))
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BITMAP_TRANSFORM_F(f)); //  ((26UL<<24)|(((f)&16777215UL)<<0))
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Interrupt(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ms);
 void API_CMD_INTERRUPT(uint32_t ms)
 {
-    display.getDisplayDriver()->WriteData32(CMD_INTERRUPT);
-    display.getDisplayDriver()->WriteData32(ms);
-    display.getDisplayDriver()->IncCMDOffset(8);
+    coprocessorWrite(CMD_INTERRUPT);
+    coprocessorWrite(ms);
+    coprocessorAdvance(8);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_FgColor(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t c);
 void API_CMD_FGCOLOR(uint32_t c)
 {
-    display.getDisplayDriver()->WriteData32(CMD_FGCOLOR);
-    display.getDisplayDriver()->WriteData32(c);
-    display.getDisplayDriver()->IncCMDOffset(8);
+    coprocessorWrite(CMD_FGCOLOR);
+    coprocessorWrite(c);
+    coprocessorAdvance(8);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Rotate(Ft_Gpu_Hal_Context_t *phost,ft_int32_t a);
 void API_CMD_ROTATE(int32_t a)
 {
-    display.getDisplayDriver()->WriteData32(CMD_ROTATE);
-    display.getDisplayDriver()->WriteData32(a);
-    display.getDisplayDriver()->IncCMDOffset(8);
+    coprocessorWrite(CMD_ROTATE);
+    coprocessorWrite(a);
+    coprocessorAdvance(8);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_MemWrite(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ptr, ft_uint32_t num);
 void API_CMD_MEMWRITE(uint32_t ptr, uint32_t num)
 {
-    display.getDisplayDriver()->WriteData32(CMD_MEMWRITE);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32(num);
-    display.getDisplayDriver()->IncCMDOffset(12);
+    coprocessorWrite(CMD_MEMWRITE);
+    coprocessorWrite(ptr);
+    coprocessorWrite(num);
+    coprocessorAdvance(12);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Scrollbar(Ft_Gpu_Hal_Context_t *phost,ft_int16_t x, ft_int16_t y,
@@ -607,57 +625,57 @@ void API_CMD_SCROLLBAR(int16_t x,
                        uint16_t size,
                        uint16_t range)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SCROLLBAR);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)h << 16) | (w & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)val << 16) | (options & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)range << 16) | (size & 0xffff)));
-    display.getDisplayDriver()->IncCMDOffset(20);
+    coprocessorWrite(CMD_SCROLLBAR);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)h << 16) | (w & 0xffff)));
+    coprocessorWrite((((uint32_t)val << 16) | (options & 0xffff)));
+    coprocessorWrite((((uint32_t)range << 16) | (size & 0xffff)));
+    coprocessorAdvance(20);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_GetMatrix(Ft_Gpu_Hal_Context_t *phost,ft_int32_t a, ft_int32_t b,
 // ft_int32_t c, ft_int32_t d, ft_int32_t e, ft_int32_t f);
 void API_CMD_GETMATRIX(int32_t a, int32_t b, int32_t c, int32_t d, int32_t e, int32_t f)
 {
-    display.getDisplayDriver()->WriteData32(CMD_GETMATRIX);
-    display.getDisplayDriver()->WriteData32(a);
-    display.getDisplayDriver()->WriteData32(b);
-    display.getDisplayDriver()->WriteData32(c);
-    display.getDisplayDriver()->WriteData32(d);
-    display.getDisplayDriver()->WriteData32(e);
-    display.getDisplayDriver()->WriteData32(f);
-    display.getDisplayDriver()->IncCMDOffset(28);
+    coprocessorWrite(CMD_GETMATRIX);
+    coprocessorWrite(a);
+    coprocessorWrite(b);
+    coprocessorWrite(c);
+    coprocessorWrite(d);
+    coprocessorWrite(e);
+    coprocessorWrite(f);
+    coprocessorAdvance(28);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Sketch(Ft_Gpu_Hal_Context_t *phost,ft_int16_t x, ft_int16_t y, ft_uint16_t
 // w, ft_uint16_t h, ft_uint32_t ptr, ft_uint16_t format);
 void API_CMD_SKETCH(int16_t x, int16_t y, uint16_t w, uint16_t h, uint32_t ptr, uint16_t format)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SKETCH);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)h << 16) | (w & 0xffff)));
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32(format);
-    display.getDisplayDriver()->IncCMDOffset(20);
+    coprocessorWrite(CMD_SKETCH);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)h << 16) | (w & 0xffff)));
+    coprocessorWrite(ptr);
+    coprocessorWrite(format);
+    coprocessorAdvance(20);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_MemSet(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ptr, ft_uint32_t value,
 // ft_uint32_t num);
 void API_CMD_MEMSET(uint32_t ptr, uint32_t value, uint32_t num)
 {
-    display.getDisplayDriver()->WriteData32(CMD_MEMSET);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32(value);
-    display.getDisplayDriver()->WriteData32(num);
-    display.getDisplayDriver()->IncCMDOffset(16);
+    coprocessorWrite(CMD_MEMSET);
+    coprocessorWrite(ptr);
+    coprocessorWrite(value);
+    coprocessorWrite(num);
+    coprocessorAdvance(16);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_GradColor(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t c);
 void API_CMD_GRADCOLOR(uint32_t c)
 {
-    display.getDisplayDriver()->WriteData32(CMD_GRADCOLOR);
-    display.getDisplayDriver()->WriteData32(c);
-    display.getDisplayDriver()->IncCMDOffset(8);
+    coprocessorWrite(CMD_GRADCOLOR);
+    coprocessorWrite(c);
+    coprocessorAdvance(8);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Bitmap_Transform(Ft_Gpu_Hal_Context_t *phost,ft_int32_t x0, ft_int32_t y0,
@@ -677,73 +695,73 @@ void API_CMD_BITMAP_TRANSFORM(int32_t x0,
                               int32_t ty2,
                               uint16_t result)
 {
-    display.getDisplayDriver()->WriteData32(CMD_BITMAP_TRANSFORM);
-    display.getDisplayDriver()->WriteData32(x0);
-    display.getDisplayDriver()->WriteData32(y0);
-    display.getDisplayDriver()->WriteData32(x1);
-    display.getDisplayDriver()->WriteData32(y1);
-    display.getDisplayDriver()->WriteData32(x2);
-    display.getDisplayDriver()->WriteData32(y2);
-    display.getDisplayDriver()->WriteData32(tx0);
-    display.getDisplayDriver()->WriteData32(ty0);
-    display.getDisplayDriver()->WriteData32(tx1);
-    display.getDisplayDriver()->WriteData32(ty1);
-    display.getDisplayDriver()->WriteData32(tx2);
-    display.getDisplayDriver()->WriteData32(ty2);
-    display.getDisplayDriver()->WriteData32(result);
-    display.getDisplayDriver()->IncCMDOffset(56);
+    coprocessorWrite(CMD_BITMAP_TRANSFORM);
+    coprocessorWrite(x0);
+    coprocessorWrite(y0);
+    coprocessorWrite(x1);
+    coprocessorWrite(y1);
+    coprocessorWrite(x2);
+    coprocessorWrite(y2);
+    coprocessorWrite(tx0);
+    coprocessorWrite(ty0);
+    coprocessorWrite(tx1);
+    coprocessorWrite(ty1);
+    coprocessorWrite(tx2);
+    coprocessorWrite(ty2);
+    coprocessorWrite(result);
+    coprocessorAdvance(56);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Calibrate(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t result);
 void API_CMD_CALIBRATE(uint32_t result)
 {
-    display.getDisplayDriver()->WriteData32(CMD_CALIBRATE);
-    display.getDisplayDriver()->WriteData32(result);
-    display.getDisplayDriver()->IncCMDOffset(8);
+    coprocessorWrite(CMD_CALIBRATE);
+    coprocessorWrite(result);
+    coprocessorAdvance(8);
     // Ft_Gpu_Hal_WaitCmdfifo_empty(phost);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_SetFont(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t font, ft_uint32_t ptr);
 void API_CMD_SETFONT(uint32_t font, uint32_t ptr)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SETFONT);
-    display.getDisplayDriver()->WriteData32(font);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->IncCMDOffset(12);
+    coprocessorWrite(CMD_SETFONT);
+    coprocessorWrite(font);
+    coprocessorWrite(ptr);
+    coprocessorAdvance(12);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Logo(Ft_Gpu_Hal_Context_t *phost);
 void API_CMD_LOGO(void)
 {
-    display.getDisplayDriver()->WriteData32(CMD_LOGO);
-    display.getDisplayDriver()->IncCMDOffset(4);
+    coprocessorWrite(CMD_LOGO);
+    coprocessorAdvance(4);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Append(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ptr, ft_uint32_t num);
 void API_CMD_APPEND(uint32_t ptr, uint32_t num)
 {
-    display.getDisplayDriver()->WriteData32(CMD_APPEND);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32(num);
-    display.getDisplayDriver()->IncCMDOffset(12);
+    coprocessorWrite(CMD_APPEND);
+    coprocessorWrite(ptr);
+    coprocessorWrite(num);
+    coprocessorAdvance(12);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_MemZero(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ptr, ft_uint32_t num);
 void API_CMD_MEMZERO(uint32_t ptr, uint32_t num)
 {
-    display.getDisplayDriver()->WriteData32(CMD_MEMZERO);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32(num);
-    display.getDisplayDriver()->IncCMDOffset(12);
+    coprocessorWrite(CMD_MEMZERO);
+    coprocessorWrite(ptr);
+    coprocessorWrite(num);
+    coprocessorAdvance(12);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Scale(Ft_Gpu_Hal_Context_t *phost,ft_int32_t sx, ft_int32_t sy);
 void API_CMD_SCALE(int32_t sx, int32_t sy)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SCALE);
-    display.getDisplayDriver()->WriteData32(sx);
-    display.getDisplayDriver()->WriteData32(sy);
-    display.getDisplayDriver()->IncCMDOffset(12);
+    coprocessorWrite(CMD_SCALE);
+    coprocessorWrite(sx);
+    coprocessorWrite(sy);
+    coprocessorAdvance(12);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Clock(Ft_Gpu_Hal_Context_t *phost,ft_int16_t x, ft_int16_t y, ft_int16_t
@@ -757,50 +775,55 @@ void API_CMD_CLOCK(int16_t x,
                    uint16_t s,
                    uint16_t ms)
 {
-    display.getDisplayDriver()->WriteData32(CMD_CLOCK);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)options << 16) | (r & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)m << 16) | (h & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)ms << 16) | (s & 0xffff)));
-    display.getDisplayDriver()->IncCMDOffset(20);
+    coprocessorWrite(CMD_CLOCK);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)options << 16) | (r & 0xffff)));
+    coprocessorWrite((((uint32_t)m << 16) | (h & 0xffff)));
+    coprocessorWrite((((uint32_t)ms << 16) | (s & 0xffff)));
+    coprocessorAdvance(20);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Gradient(Ft_Gpu_Hal_Context_t *phost,ft_int16_t x0, ft_int16_t y0,
 // ft_uint32_t rgb0, ft_int16_t x1, ft_int16_t y1, ft_uint32_t rgb1);
 void API_CMD_GRADIENT(int16_t x0, int16_t y0, uint32_t rgb0, int16_t x1, int16_t y1, uint32_t rgb1)
 {
-    display.getDisplayDriver()->WriteData32(CMD_GRADIENT);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y0 << 16) | (x0 & 0xffff)));
-    display.getDisplayDriver()->WriteData32(rgb0);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y1 << 16) | (x1 & 0xffff)));
-    display.getDisplayDriver()->WriteData32(rgb1);
-    display.getDisplayDriver()->IncCMDOffset(20);
+    if (displayList::capturing())
+    {
+        displayList::gradient(x0, y0, rgb0, x1, y1, rgb1);
+        return;
+    }
+    coprocessorWrite(CMD_GRADIENT);
+    coprocessorWrite((((uint32_t)y0 << 16) | (x0 & 0xffff)));
+    coprocessorWrite(rgb0);
+    coprocessorWrite((((uint32_t)y1 << 16) | (x1 & 0xffff)));
+    coprocessorWrite(rgb1);
+    coprocessorAdvance(20);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_SetMatrix(Ft_Gpu_Hal_Context_t *phost);
 void API_CMD_SETMATRIX(void)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SETMATRIX);
-    display.getDisplayDriver()->IncCMDOffset(4);
+    coprocessorWrite(CMD_SETMATRIX);
+    coprocessorAdvance(4);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Track(Ft_Gpu_Hal_Context_t *phost,ft_int16_t x, ft_int16_t y, ft_int16_t
 // w, ft_int16_t h, ft_int16_t tag);
 void API_CMD_TRACK(int16_t x, int16_t y, int16_t w, int16_t h, int16_t tag)
 {
-    display.getDisplayDriver()->WriteData32(CMD_TRACK);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)h << 16) | (w & 0xffff)));
-    display.getDisplayDriver()->WriteData32(tag);
-    display.getDisplayDriver()->IncCMDOffset(16);
+    coprocessorWrite(CMD_TRACK);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)h << 16) | (w & 0xffff)));
+    coprocessorWrite(tag);
+    coprocessorAdvance(16);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_GetPtr(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t result);
 void API_CMD_GETPTR(uint32_t result)
 {
-    display.getDisplayDriver()->WriteData32(CMD_GETPTR);
-    display.getDisplayDriver()->WriteData32(result);
-    display.getDisplayDriver()->IncCMDOffset(8);
+    coprocessorWrite(CMD_GETPTR);
+    coprocessorWrite(result);
+    coprocessorAdvance(8);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Progress(Ft_Gpu_Hal_Context_t *phost,ft_int16_t x, ft_int16_t y,
@@ -813,73 +836,74 @@ void API_CMD_PROGRESS(int16_t x,
                       uint16_t val,
                       uint16_t range)
 {
-    display.getDisplayDriver()->WriteData32(CMD_PROGRESS);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)h << 16) | (w & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)val << 16) | (options & 0xffff)));
-    display.getDisplayDriver()->WriteData32(range);
-    display.getDisplayDriver()->IncCMDOffset(20);
+    coprocessorWrite(CMD_PROGRESS);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)h << 16) | (w & 0xffff)));
+    coprocessorWrite((((uint32_t)val << 16) | (options & 0xffff)));
+    coprocessorWrite(range);
+    coprocessorAdvance(20);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_ColdStart(Ft_Gpu_Hal_Context_t *phost);
 void API_CMD_COLDSTART(void)
 {
-    display.getDisplayDriver()->WriteData32(CMD_COLDSTART);
-    display.getDisplayDriver()->IncCMDOffset(4);
+    coprocessorWrite(CMD_COLDSTART);
+    coprocessorAdvance(4);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Dial(Ft_Gpu_Hal_Context_t *phost,ft_int16_t x, ft_int16_t y, ft_int16_t r,
 // ft_uint16_t options, ft_uint16_t val);
 void API_CMD_DIAL(int16_t x, int16_t y, int16_t r, uint16_t options, uint16_t val)
 {
-    display.getDisplayDriver()->WriteData32(CMD_DIAL);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)options << 16) | (r & 0xffff)));
-    display.getDisplayDriver()->WriteData32(val);
-    display.getDisplayDriver()->IncCMDOffset(16);
+    coprocessorWrite(CMD_DIAL);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)options << 16) | (r & 0xffff)));
+    coprocessorWrite(val);
+    coprocessorAdvance(16);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_LoadImage(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ptr, ft_uint32_t
 // options);
 void API_CMD_LOADIMAGE(uint32_t ptr, uint32_t options)
 {
-    display.getDisplayDriver()->WriteData32(CMD_LOADIMAGE);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32(options);
-    display.getDisplayDriver()->IncCMDOffset(12);
+    coprocessorWrite(CMD_LOADIMAGE);
+    coprocessorWrite(ptr);
+    coprocessorWrite(options);
+    coprocessorAdvance(12);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Dlstart(Ft_Gpu_Hal_Context_t *phost);
 void API_CMD_DLSTART(void)
 {
-    display.getDisplayDriver()->WriteData32(CMD_DLSTART);
-    display.getDisplayDriver()->IncCMDOffset(4);
+    displayList::coprocessorDrew = true;
+    coprocessorWrite(CMD_DLSTART);
+    coprocessorAdvance(4);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Snapshot(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ptr);
 void API_CMD_SNAPSHOT(uint32_t ptr)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SNAPSHOT);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->IncCMDOffset(8);
+    coprocessorWrite(CMD_SNAPSHOT);
+    coprocessorWrite(ptr);
+    coprocessorAdvance(8);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_ScreenSaver(Ft_Gpu_Hal_Context_t *phost);
 void API_CMD_SCREENSAVER(void)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SCREENSAVER);
-    display.getDisplayDriver()->IncCMDOffset(4);
+    coprocessorWrite(CMD_SCREENSAVER);
+    coprocessorAdvance(4);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Memcrc(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ptr, ft_uint32_t num,
 // ft_uint32_t result);
 void API_CMD_MEMCRC(uint32_t ptr, uint32_t num, uint32_t result)
 {
-    display.getDisplayDriver()->WriteData32(CMD_MEMCRC);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32(num);
-    display.getDisplayDriver()->WriteData32(result);
-    display.getDisplayDriver()->IncCMDOffset(16);
+    coprocessorWrite(CMD_MEMCRC);
+    coprocessorWrite(ptr);
+    coprocessorWrite(num);
+    coprocessorWrite(result);
+    coprocessorAdvance(16);
 }
 
 // FT81X-only features
@@ -889,44 +913,37 @@ void API_CMD_MEMCRC(uint32_t ptr, uint32_t num, uint32_t result)
 
 void API_VERTEX_FORMAT(uint8_t frac)
 {
-    display.getDisplayDriver()->WriteData32(VERTEX_FORMAT(frac));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(VERTEX_FORMAT(frac));
 }
 
 void API_BITMAP_LAYOUT_H(uint8_t linestride, uint8_t height)
 {
-    display.getDisplayDriver()->WriteData32(BITMAP_LAYOUT_H(linestride, height));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BITMAP_LAYOUT_H(linestride, height));
 }
 
 void API_BITMAP_SIZE_H(uint8_t width, uint8_t height)
 {
-    display.getDisplayDriver()->WriteData32(BITMAP_SIZE_H(width, height));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(BITMAP_SIZE_H(width, height));
 }
 
 void API_PALETTE_SOURCE(uint32_t addr)
 {
-    display.getDisplayDriver()->WriteData32(PALETTE_SOURCE(addr));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(PALETTE_SOURCE(addr));
 }
 
 void API_VERTEX_TRANSLATE_X(uint32_t x)
 {
-    display.getDisplayDriver()->WriteData32(VERTEX_TRANSLATE_X(x));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(VERTEX_TRANSLATE_X(x));
 }
 
 void API_VERTEX_TRANSLATE_Y(uint32_t y)
 {
-    display.getDisplayDriver()->WriteData32(VERTEX_TRANSLATE_Y(y));
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(VERTEX_TRANSLATE_Y(y));
 }
 
 void API_NOP(void)
 {
-    display.getDisplayDriver()->WriteData32(NOP());
-    display.getDisplayDriver()->IncCMDOffset(4);
+    listWord(NOP());
 }
 
 // ###############       CO-PRO        #########################################
@@ -934,58 +951,58 @@ void API_NOP(void)
 // ft_void_t Ft_Gpu_CoCmd_SetRotate(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t r);
 void API_CMD_SETROTATE(uint32_t r)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SETROTATE);
-    display.getDisplayDriver()->WriteData32(r);
-    display.getDisplayDriver()->IncCMDOffset(8);
+    coprocessorWrite(CMD_SETROTATE);
+    coprocessorWrite(r);
+    coprocessorAdvance(8);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_SetFont2(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t font, ft_uint32_t ptr,
 // ft_uint32_t firstchar);
 void API_CMD_SETFONT2(uint32_t font, uint32_t ptr, uint32_t firstchar)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SETFONT2);
-    display.getDisplayDriver()->WriteData32(font);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32(firstchar);
-    display.getDisplayDriver()->IncCMDOffset(16);
+    coprocessorWrite(CMD_SETFONT2);
+    coprocessorWrite(font);
+    coprocessorWrite(ptr);
+    coprocessorWrite(firstchar);
+    coprocessorAdvance(16);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Snapshot2(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t fmt, ft_uint32_t ptr,
 // ft_int16_t x, ft_int16_t y, ft_int16_t w, ft_int16_t h);
 void API_CMD_SNAPSHOT2(uint32_t fmt, uint32_t ptr, int16_t x, int16_t y, int16_t w, int16_t h)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SNAPSHOT2);
-    display.getDisplayDriver()->WriteData32(fmt);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)h << 16) | (w & 0xffff)));
-    display.getDisplayDriver()->IncCMDOffset(20);
+    coprocessorWrite(CMD_SNAPSHOT2);
+    coprocessorWrite(fmt);
+    coprocessorWrite(ptr);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)h << 16) | (w & 0xffff)));
+    coprocessorAdvance(20);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_MediaFifo(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ptr, ft_uint32_t size);
 void API_CMD_MEDIAFIFO(uint32_t ptr, uint32_t size)
 {
-    display.getDisplayDriver()->WriteData32(CMD_MEDIAFIFO);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32(size);
-    display.getDisplayDriver()->IncCMDOffset(12);
+    coprocessorWrite(CMD_MEDIAFIFO);
+    coprocessorWrite(ptr);
+    coprocessorWrite(size);
+    coprocessorAdvance(12);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Int_SWLoadImage(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t ptr, ft_uint32_t
 // options);
 void API_CMD_INT_SWLOADIMAGE(uint32_t ptr, uint32_t options)
 {
-    display.getDisplayDriver()->WriteData32(CMD_INT_SWLOADIMAGE);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32(options);
-    display.getDisplayDriver()->IncCMDOffset(12);
+    coprocessorWrite(CMD_INT_SWLOADIMAGE);
+    coprocessorWrite(ptr);
+    coprocessorWrite(options);
+    coprocessorAdvance(12);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_Sync(Ft_Gpu_Hal_Context_t *phost);
 void API_CMD_SYNC(void)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SYNC);
-    display.getDisplayDriver()->IncCMDOffset(4);
+    coprocessorWrite(CMD_SYNC);
+    coprocessorAdvance(4);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_CSketch(Ft_Gpu_Hal_Context_t *phost,ft_int16_t x, ft_int16_t y,
@@ -998,72 +1015,83 @@ void API_CMD_CSKETCH(int16_t x,
                      uint16_t format,
                      uint16_t freq)
 {
-    display.getDisplayDriver()->WriteData32(CMD_CSKETCH);
-    display.getDisplayDriver()->WriteData32((((uint32_t)y << 16) | (x & 0xffff)));
-    display.getDisplayDriver()->WriteData32((((uint32_t)h << 16) | (w & 0xffff)));
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->WriteData32((((uint32_t)freq << 16) | (format & 0xffff)));
-    display.getDisplayDriver()->IncCMDOffset(20);
+    coprocessorWrite(CMD_CSKETCH);
+    coprocessorWrite((((uint32_t)y << 16) | (x & 0xffff)));
+    coprocessorWrite((((uint32_t)h << 16) | (w & 0xffff)));
+    coprocessorWrite(ptr);
+    coprocessorWrite((((uint32_t)freq << 16) | (format & 0xffff)));
+    coprocessorAdvance(20);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_RomFont(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t font, ft_uint32_t
 // romslot);
 void API_CMD_ROMFONT(uint32_t font, uint32_t romslot)
 {
-    display.getDisplayDriver()->WriteData32(CMD_ROMFONT);
-    display.getDisplayDriver()->WriteData32(font);
-    display.getDisplayDriver()->WriteData32(romslot);
-    display.getDisplayDriver()->IncCMDOffset(12);
+    coprocessorWrite(CMD_ROMFONT);
+    coprocessorWrite(font);
+    coprocessorWrite(romslot);
+    coprocessorAdvance(12);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_PlayVideo(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t options);
 void API_CMD_PLAYVIDEO(uint32_t options)
 {
-    display.getDisplayDriver()->WriteData32(CMD_PLAYVIDEO);
-    display.getDisplayDriver()->WriteData32(options);
-    display.getDisplayDriver()->IncCMDOffset(8);
+    coprocessorWrite(CMD_PLAYVIDEO);
+    coprocessorWrite(options);
+    coprocessorAdvance(8);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_VideoFrame(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t dst, ft_uint32_t ptr);
 void API_CMD_VIDEOFRAME(uint32_t dst, uint32_t ptr)
 {
-    display.getDisplayDriver()->WriteData32(CMD_VIDEOFRAME);
-    display.getDisplayDriver()->WriteData32(dst);
-    display.getDisplayDriver()->WriteData32(ptr);
-    display.getDisplayDriver()->IncCMDOffset(12);
+    coprocessorWrite(CMD_VIDEOFRAME);
+    coprocessorWrite(dst);
+    coprocessorWrite(ptr);
+    coprocessorAdvance(12);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_VideoStart(Ft_Gpu_Hal_Context_t *phost);
 void API_CMD_VIDEOSTART(void)
 {
-    display.getDisplayDriver()->WriteData32(CMD_VIDEOSTART);
-    display.getDisplayDriver()->IncCMDOffset(4);
+    coprocessorWrite(CMD_VIDEOSTART);
+    coprocessorAdvance(4);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_SetBase(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t base);
 void API_CMD_SETBASE(uint32_t base)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SETBASE);
-    display.getDisplayDriver()->WriteData32(base);
-    display.getDisplayDriver()->IncCMDOffset(8);
+    // Kept for both paths: the base outlives the list it was set in.
+    displayList::setBase(base);
+    if (displayList::capturing())
+    {
+        return;
+    }
+    coprocessorWrite(CMD_SETBASE);
+    coprocessorWrite(base);
+    coprocessorAdvance(8);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_SetBitmap(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t source, ft_uint16_t fmt,
 // ft_uint16_t w, ft_uint16_t h);
 void API_CMD_SETBITMAP(uint32_t source, uint16_t fmt, uint16_t w, uint16_t h)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SETBITMAP);
-    display.getDisplayDriver()->WriteData32(source);
-    display.getDisplayDriver()->WriteData32((((uint32_t)w << 16) | (fmt & 0xffff)));
-    display.getDisplayDriver()->WriteData32(h);
-    display.getDisplayDriver()->IncCMDOffset(16);
+    if (displayList::capturing())
+    {
+        displayList::setBitmap(source, fmt, w, h);
+        return;
+    }
+    coprocessorWrite(CMD_SETBITMAP);
+    coprocessorWrite(source);
+    coprocessorWrite((((uint32_t)w << 16) | (fmt & 0xffff)));
+    coprocessorWrite(h);
+    coprocessorAdvance(16);
 }
 
 // ft_void_t Ft_Gpu_CoCmd_SetScratch(Ft_Gpu_Hal_Context_t *phost,ft_uint32_t handle);
 void API_CMD_SETSCRATCH(uint32_t handle)
 {
-    display.getDisplayDriver()->WriteData32(CMD_SETSCRATCH);
-    display.getDisplayDriver()->WriteData32(handle);
-    display.getDisplayDriver()->IncCMDOffset(8);
+    coprocessorWrite(CMD_SETSCRATCH);
+    coprocessorWrite(handle);
+    coprocessorAdvance(8);
 }
 #endif // FT81X-only features

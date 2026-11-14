@@ -2,10 +2,6 @@
 #include "FT812.h"
 #include "pin_mux.h"
 
-uint8_t DisplayDriverImpl::streamUpdateStep = 0;
-
-void dataTransferComplite();
-
 void DisplayDriverImpl::init(SpiBus* spi)
 {
     this->spi = spi;
@@ -135,84 +131,42 @@ void DisplayDriverImpl::writeDataToCMD(const uint8_t* imgData, uint32_t totalDat
 }
 
 //========================================================================================================
-void DisplayDriverImpl::initStreamDma(uint16_t byteResolution,
-                                      uint16_t streamWidth,
-                                      uint16_t streamHeight,
-                                      uint8_t* streamBuf,
-                                      uint32_t destMemAddress)
+void DisplayDriverImpl::writeDisplayList(uint32_t offset, const uint32_t* words, uint32_t count)
 {
-    setUpdateDmaStep(0);
+    MCU_CSlow();
+    EVE_AddrForWr(RAM_DL + offset);
+    spi->writeWords(words, count);
+    MCU_CShigh();
+}
 
-    if (streamInitialized)
+void DisplayDriverImpl::startDisplayListWrite(uint32_t offset,
+                                             const uint32_t* words,
+                                             uint32_t count)
+{
+    MCU_CSlow();
+    EVE_AddrForWr(RAM_DL + offset);
+    if (spi->startWriteWords(words, count))
     {
+        // Chip select stays low; MCU_BackgroundWritePoll() raises it.
+        MCU_BackgroundWriteStarted();
         return;
     }
-
-    streamBufDestMemAddress = destMemAddress;
-    screenBuffSize = byteResolution * streamWidth * streamHeight;
-    screenBuff = streamBuf;
-
-    spi->initDma(dataTransferComplite, screenBuff, screenBuffSize);
-    streamInitialized = true;
-}
-
-void DisplayDriverImpl::stopStreamDma()
-{
-    spi->stopDma();
+    spi->writeWords(words, count);
     MCU_CShigh();
-    streamInitialized = false;
 }
 
-bool DisplayDriverImpl::updateStreamDma(bool lastFrame)
+bool DisplayDriverImpl::isDisplayListWriteDone()
 {
-    if (!streamInitialized)
-        return true;
-
-    if (streamUpdateStep == 0 && !lastFrame)
-        return false;
-
-    bool refreshScreenNow = false;
-
-    switch (streamUpdateStep)
-    {
-        case 0: // DMA send start
-        {
-            sendDataDma();
-            break;
-        }
-        case 1: // sending in progress
-        {
-            break;
-        }
-        case 2: // DMA transfer finished - time to show frame
-        {
-            refreshScreenNow = true;
-            setUpdateDmaStep(3);
-            break;
-        }
-        case 3:
-        {
-            setUpdateDmaStep(0);
-            break;
-        }
-    }
-
-    return refreshScreenNow;
+    return MCU_BackgroundWritePoll();
 }
 
-void DisplayDriverImpl::sendDataDma()
+void DisplayDriverImpl::swapDisplayList()
 {
-    MCU_CSlow(); // CS low begins SPI transaction
-    EVE_AddrForWr(streamBufDestMemAddress);
-
-    spi->transferDmaBuff();
-
-    setUpdateDmaStep(1);
+    EVE_MemWrite8(REG_DLSWAP, DLSWAP_FRAME);
 }
 
-void dataTransferComplite()
+bool DisplayDriverImpl::isDisplayListSwapPending()
 {
-    MCU_CShigh();
-
-    DisplayDriverImpl::setUpdateDmaStep(2);
+    return EVE_MemRead8(REG_DLSWAP) != 0;
 }
+

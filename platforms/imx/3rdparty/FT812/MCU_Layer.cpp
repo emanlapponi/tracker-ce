@@ -193,8 +193,37 @@ void FT812_SetFastTransferMode()
     spiBus->setSpeed(30000000);
 }
 
+static bool backgroundWrite = false;
+
+void MCU_BackgroundWriteStarted(void)
+{
+    backgroundWrite = true;
+}
+
+// Returns true when no write is going on in the background. Ends the SPI
+// transaction of one that has just finished.
+bool MCU_BackgroundWritePoll(void)
+{
+    if (!backgroundWrite)
+    {
+        return true;
+    }
+    if (!spiBus->isWriteDone())
+    {
+        return false;
+    }
+    backgroundWrite = false;
+    MCU_CShigh();
+    return true;
+}
+
 void MCU_CSlow(void)
 {
+    // Every access to the chip starts here, so this is where anything else
+    // waits for a display list that is still being sent.
+    while (!MCU_BackgroundWritePoll())
+    {
+    }
     GPIO_PinWrite(ftCsGpio, ftCsPin, 0);
     delayMicroseconds(1);
 }

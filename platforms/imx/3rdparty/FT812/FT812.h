@@ -64,6 +64,8 @@ int FT812_Init(GPIO_Type* pdGpio,
                bool drivePwm);
 void MCU_CSlow(void);
 void MCU_CShigh(void);
+void MCU_BackgroundWriteStarted(void);
+bool MCU_BackgroundWritePoll(void);
 void MCU_PDlow(void);
 void MCU_PDhigh(void);
 void MCU_Delay_3us(void);

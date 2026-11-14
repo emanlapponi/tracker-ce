@@ -12,6 +12,15 @@
 
 bool onDevStorageMode(bool enable);
 
+extern "C"
+{
+    void USB_PollFromFault(void);
+    extern void (*const g_pfnVectors[])(void);
+    extern const char __exidx_start;
+    extern const uint32_t _vStackBase;
+    extern const uint32_t _vStackTop;
+}
+
 namespace
 {
 constexpr uint32_t kTxBufferSize = 4096; // must be a power of two
@@ -49,6 +58,25 @@ volatile uint8_t txLastByte = '\n';
 char lineBuffer[kLineBufferSize];
 size_t lineLength = 0;
 bool lineOverflow = false;
+
+// The fault report. A fault handler never returns, so this is what
+// the console answers with from then on.
+constexpr uint32_t kFaultStackAddresses = 16;
+// About two seconds between repeats of the report, for a host that opens
+// the port after the fault.
+constexpr uint32_t kFaultRepeatPasses = 5000000;
+constexpr uint16_t kSemihostingBreakpoint = 0xBEAB;
+constexpr uint32_t kSemihostingResult = 32;
+enum FaultFrame : uint32_t
+{
+    kFrameR0 = 0,
+    kFrameLr = 5,
+    kFramePc = 6,
+    kFrameXpsr = 7,
+    kFrameWords = 8,
+};
+const uint32_t* faultFrame = nullptr;
+bool faulted = false;
 
 PlatformImpl* devPlatform = nullptr;
 PendingAction pendingAction = PendingAction::kNone;
@@ -161,8 +189,89 @@ void handleFlash(const char* name)
     reply("ok flash pending");
 }
 
+bool isCodeAddress(uint32_t address)
+{
+    // From the vector table to the unwind index the linker script puts
+    // after all code in flash. _etext is no use: more code follows it.
+    return address >= reinterpret_cast<uint32_t>(&g_pfnVectors) &&
+           address < reinterpret_cast<uint32_t>(&__exidx_start);
+}
+
+bool isOnStack(const uint32_t* address)
+{
+    return (reinterpret_cast<uint32_t>(address) & 3) == 0 && address >= &_vStackBase &&
+           address < &_vStackTop;
+}
+
+// The stack words above the exception frame that look like return
+// addresses: a rough call chain, with stale entries possible.
+void replyFaultStack()
+{
+    char line[16 + kFaultStackAddresses * 9];
+    int length = snprintf(line, sizeof(line), "fault stack");
+    uint32_t found = 0;
+    for (const uint32_t* word = faultFrame + kFrameWords;
+         word < &_vStackTop && found < kFaultStackAddresses;
+         word++)
+    {
+        const bool thumbReturnAddress = (*word & 1) != 0 && isCodeAddress(*word);
+        if (thumbReturnAddress)
+        {
+            length += snprintf(line + length, sizeof(line) - length, " %08lx", *word);
+            found++;
+        }
+    }
+    reply("%s", line);
+}
+
+void replyFault()
+{
+    if (faultFrame == nullptr)
+    {
+        reply("fault cfsr=%08lx hfsr=%08lx mmfar=%08lx bfar=%08lx, no usable stack",
+              SCB->CFSR,
+              SCB->HFSR,
+              SCB->MMFAR,
+              SCB->BFAR);
+        return;
+    }
+
+    // The low bits of xpsr name the exception that was running when the
+    // fault came; 0 is the main loop.
+    // The build id lets the host check that it resolves the addresses
+    // against the image of this build.
+    reply("fault pc=%08lx lr=%08lx xpsr=%08lx cfsr=%08lx hfsr=%08lx mmfar=%08lx bfar=%08lx sp=%08lx handler=%lu build=%s",
+          faultFrame[kFramePc],
+          faultFrame[kFrameLr],
+          faultFrame[kFrameXpsr],
+          SCB->CFSR,
+          SCB->HFSR,
+          SCB->MMFAR,
+          SCB->BFAR,
+          reinterpret_cast<uint32_t>(faultFrame),
+          __get_IPSR(),
+          devPlatform != nullptr ? devPlatform->getSystemInfo()->buildId : "?");
+    replyFaultStack();
+}
+
+// Nothing else runs after a fault, interrupts included, so the USB
+// controller is polled from here.
+void serveConsoleFromFault(uint32_t passes)
+{
+    for (uint32_t i = 0; i < passes; i++)
+    {
+        USB_PollFromFault();
+    }
+}
+
 void handleLine(char* line)
 {
+    if (faulted)
+    {
+        replyFault();
+        return;
+    }
+
     char* argument = strchr(line, ' ');
 
     if (argument != nullptr)
@@ -354,6 +463,57 @@ extern "C" void DevConsole_RxBytes(const uint8_t* data, size_t length)
         }
     }
 }
+
+// Reports the fault whose exception frame this is, for as long as the
+// device stays on.
+extern "C" __attribute__((used)) void DevConsole_Fault(uint32_t* frame)
+{
+    const bool frameUsable = isOnStack(frame) && isOnStack(frame + kFrameWords - 1);
+    faultFrame = frameUsable ? frame : nullptr;
+    faulted = true;
+    for (;;)
+    {
+        // Log lines queued before the fault go out first: with the buffer
+        // full the report would be dropped.
+        serveConsoleFromFault(kFaultRepeatPasses);
+        replyFault();
+    }
+}
+
+// Called by HardFault_Handler with the exception frame. Returns only for a
+// semihosting breakpoint, which is stepped over as the stock handler does.
+extern "C" void DevConsole_HardFault(uint32_t* frame)
+{
+    const bool frameUsable = isOnStack(frame) && isOnStack(frame + kFrameWords - 1);
+    if (frameUsable && isCodeAddress(frame[kFramePc]) &&
+        *reinterpret_cast<const uint16_t*>(frame[kFramePc]) == kSemihostingBreakpoint)
+    {
+        frame[kFramePc] += 2;
+        frame[kFrameR0] = kSemihostingResult;
+        return;
+    }
+
+    DevConsole_Fault(frame);
+}
+
+// The fault exceptions other than the hard fault, taken instead of it when
+// enabled. This firmware enables none, but it is started by a bootloader:
+// on the Tracker Mini SCB->SHCSR already has MEMFAULTENA set, and memory
+// access violations arrive at MemManage_Handler. The defaults in the
+// startup file hang.
+#define DEV_CONSOLE_FAULT_HANDLER(name)                                                            \
+    extern "C" __attribute__((naked)) void name(void)                                              \
+    {                                                                                              \
+        __asm volatile("tst lr, #4 \n"                                                             \
+                       "ite eq \n"                                                                 \
+                       "mrseq r0, msp \n"                                                          \
+                       "mrsne r0, psp \n"                                                          \
+                       "b DevConsole_Fault \n");                                                   \
+    }
+
+DEV_CONSOLE_FAULT_HANDLER(MemManage_Handler)
+DEV_CONSOLE_FAULT_HANDLER(BusFault_Handler)
+DEV_CONSOLE_FAULT_HANDLER(UsageFault_Handler)
 
 void DevConsole_Init(PlatformImpl* platformImpl)
 {

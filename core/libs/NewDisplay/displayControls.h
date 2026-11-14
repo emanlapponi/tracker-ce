@@ -59,6 +59,8 @@ class cDisplayControl
     bool highPrioRefresh;
 
     uint8_t refresh;
+    // Index of the buffer in cDisplay that holds this control's display list.
+    int8_t fragment = -1;
 
     uint32_t style;
     const char* text;

@@ -35,7 +35,7 @@ When extending the **Polyend Tracker Community Edition (CE)** firmware, adding n
 
 By default, `SAMPLE_MEMORY_SIZE` in [`core/source/mtStructs.h`](../core/source/mtStructs.h) maximizes sample RAM after accounting for `PSYN_RAM_POOL_SIZE` on IMX:
 * **Original Tracker (`MK66`)**: `SAMPLE_MEMORY_SIZE = 45 * 256 * 1024` (`11.25 MB`, comprising a `7.5 MB` resident mono sample pool plus `3.75 MB` `EDIT_BUFF_SIZE` reserved at the top for offline Sample Editor effects).
-* **Tracker+ & Tracker Mini (`IMX`)**: `PSYN_RAM_POOL_SIZE = 6 MB` (`6 * 1024 * 1024`) is dedicated to loadable `.psyn` synth engines (`1.92 MB` executable arena) and the synth `SamplePool` (`4 MB`). `SAMPLE_MEMORY_SIZE = ((60 * 1024 - 64) * 1024) - PSYN_RAM_POOL_SIZE` (`~54 MB`, comprising a `~39 MB` resident stereo sample pool plus `15 MB` `2 * SAMPLE_CHANNELS * EDIT_BUFF_SIZE` reserved at the top for offline Sample Editor effects).
+* **Tracker+ & Tracker Mini (`IMX`)**: `PSYN_RAM_POOL_SIZE = 6 MB` (`6 * 1024 * 1024`) is dedicated to loadable `.psyn` synth engines (`1.92 MB` executable arena) and the synth `SamplePool` (`4 MB`). `SAMPLE_MEMORY_SIZE = ((60 * 1024 - 64 - 96) * 1024) - PSYN_RAM_POOL_SIZE` (`~54 MB`, comprising a `~39 MB` resident stereo sample pool plus `15 MB` `2 * SAMPLE_CHANNELS * EDIT_BUFF_SIZE` reserved at the top for offline Sample Editor effects).
 
 However, because **Hybrid SD Card Sample Streaming** ([`core/AudioEngine/VoiceStreamManager.cpp`](../core/AudioEngine/VoiceStreamManager.cpp)) streams samples `>= 256 KB` (`kStreamThresholdBytes`) directly from the SD card while only allocating a **`32,768`-frame (`64 KB` per channel) pre-cache** in `externalRamSampleMemory`:
 * **Future developers can chip away at `SAMPLE_MEMORY_SIZE` whenever a new feature requires additional `EXTERNAL_RAM`**, simply by lowering `SAMPLE_MEMORY_SIZE` in [`core/source/mtStructs.h`](../core/source/mtStructs.h):
@@ -245,6 +245,38 @@ A scripted deployment is therefore:
 > **Keep the port closed when using USB storage mode from the device's own menu.** While a host holds the serial port open (for example to follow the log), the device postpones the USB re-enumeration that entering or leaving storage mode needs.
 
 > **Recovery**: a build that fails to boot has no console. Keep a known-good `.ptf` in `/Firmware/` and use the recessed reset button as described in the [README](../README.md#4-flashing-on-hardware--emergency-recovery).
+
+### Fault Reports
+
+With `ENABLE_DEV_CONSOLE`, a CPU fault is reported on the console instead of freezing the device silently. This covers the hard fault and the memory-management, bus and usage faults: an invalid pointer, a jump to a bad address, an undefined instruction, a `__builtin_trap()`.
+
+```text
+@fault pc=6008d28c lr=6008d283 xpsr=61000000 cfsr=00000082 hfsr=00000000 mmfar=f0000000 bfar=f0000000 sp=20057f28 handler=4 build=dbfa648
+@fault stack 600920cb 600c385d 60093125 600976fd 60090d35 60090d3d 6008f885 6007dde9 6010e789 600203a9
+```
+
+| Field | Meaning |
+| :--- | :--- |
+| `pc` | The instruction that faulted. After a jump to a bad address this is that address, and `lr` is where the jump came from. |
+| `lr` | The return address of the function that faulted. |
+| `xpsr` | Its low 9 bits are the exception that was running when the fault came: `0` is the main loop, `16` and up are interrupts (`16 + IRQ number`). |
+| `cfsr`, `hfsr`, `mmfar`, `bfar` | The Cortex-M fault status and fault address registers (`SCB->CFSR` and so on). |
+| `sp` | The stack pointer at the fault. |
+| `handler` | The exception that caught the fault: `3` hard fault, `4` memory management, `5` bus fault, `6` usage fault. |
+| `build` | The build id of the running firmware, as in the `ping` reply. The addresses only mean something in the image of that build. |
+| `@fault stack` | The words on the stack above the fault that look like return addresses, nearest first: a rough call chain. Addresses left over from earlier calls can appear in it. |
+
+Turn the addresses into functions and source lines with the image the build left next to the `.ptf`:
+
+```bash
+arm-none-eabi-addr2line -f -C -e platforms/imx/build-MINI/TrackerMini.axf 0x6008d28c 0x6008d283
+```
+
+* The firmware does not continue after a fault. It keeps the USB serial port alive from inside the fault handler, repeats the report every few seconds, and answers every console command with it, so a host that opens the port later still gets it. **Power-cycle the device afterwards.**
+* Log lines queued before the fault are delivered before the report.
+* If the stack pointer itself is invalid, a shorter `@fault cfsr=... no usable stack` line is sent.
+* The report needs the serial port, so it needs develop mode (`/.develop`). Without `ENABLE_DEV_CONSOLE` the fault handlers are the stock ones.
+* A semihosting breakpoint (`BKPT 0xAB`) is still stepped over, as the stock hard fault handler does.
 
 ---
 

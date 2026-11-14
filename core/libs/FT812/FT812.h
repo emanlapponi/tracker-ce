@@ -100,6 +100,9 @@ void API_CMD_SLIDER(int16_t x,
                     uint16_t options,
                     uint16_t val,
                     uint16_t range);
+// Replaces CMD_LOADIDENTITY, CMD_TRANSLATE, CMD_ROTATE(270 degrees), CMD_TRANSLATE and
+// CMD_SETMATRIX for a square glyph cell of the given height.
+void API_BITMAP_ROTATE_270(uint16_t height);
 void API_BITMAP_TRANSFORM_A(long a);
 void API_BITMAP_TRANSFORM_B(long b);
 void API_BITMAP_TRANSFORM_C(long c);

@@ -475,3 +475,17 @@ void USB_Task()
 #endif
     USB_DeviceCdcVcomTask();
 }
+
+/*!
+ * @brief Does the work of the USB interrupt and of USB_Task() in one call.
+ *
+ * For the hard fault report of the development console: after a fault no
+ * interrupt is taken and the main loop no longer runs.
+ *
+ * @return None.
+ */
+void USB_PollFromFault(void)
+{
+    USB_DeviceEhciIsrFunction(g_composite.deviceHandle);
+    USB_Task();
+}

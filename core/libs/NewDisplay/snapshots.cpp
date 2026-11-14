@@ -9,6 +9,7 @@ static const uint32_t fileHeaderSize = 14;
 static const uint32_t infoHeaderSize = 40; // 56
 static const uint32_t bmpDataSize = bmpWidth * bmpHeight * bytesPerPixel;
 static const uint32_t fileSize = fileHeaderSize + infoHeaderSize + bmpDataSize;
+static constexpr uint32_t kSnapshotRamAddress = 150000;
 
 // clang-format off
 
@@ -81,8 +82,10 @@ void cDisplay::doScreenShot()
     uint8_t buf[3200];
     uint16_t readstep = 0;
 
+    waitForChip();
+
     displayDriver->beginCoProList();
-    API_CMD_SNAPSHOT2(0x20, controlsRamStartAddress, 0, 240, 1600, 240);
+    API_CMD_SNAPSHOT2(0x20, kSnapshotRamAddress, 0, 240, 1600, 240);
     displayDriver->endCoProList();
     displayDriver->awaitCoProEmpty();
 
@@ -91,13 +94,13 @@ void cDisplay::doScreenShot()
     while (readstep < 240)
     {
         displayDriver->readDataRAMG(
-          buf, 3200, (controlsRamStartAddress + (3200 * 240) - 3200) - readstep * 3200);
+          buf, 3200, (kSnapshotRamAddress + (3200 * 240) - 3200) - readstep * 3200);
         fileSystem->writeFile(buf, 3200, bmpHandle);
         readstep++;
     }
 
     displayDriver->beginCoProList();
-    API_CMD_SNAPSHOT2(0x20, controlsRamStartAddress, 0, 0, 1600, 240);
+    API_CMD_SNAPSHOT2(0x20, kSnapshotRamAddress, 0, 0, 1600, 240);
     displayDriver->endCoProList();
     displayDriver->awaitCoProEmpty();
 
@@ -106,24 +109,12 @@ void cDisplay::doScreenShot()
     while (readstep < 242)
     {
         displayDriver->readDataRAMG(
-          buf, 3200, (controlsRamStartAddress + (3200 * 240) - 3200) - readstep * 3200);
+          buf, 3200, (kSnapshotRamAddress + (3200 * 240) - 3200) - readstep * 3200);
         fileSystem->writeFile(buf, 3200, bmpHandle);
         readstep++;
     }
 
     fileSystem->closeFile(bmpHandle);
-
-    displayDriver->beginCoProList();
-    API_CMD_MEMZERO(controlsRamStartAddress, 600000);
-
-    displayDriver->endCoProList();
-
-    resetControlQueue();
-
-    for (uint8_t i = 0; i < controlsCount; i++)
-    {
-        refreshControl(i);
-    }
 }
 
 void cDisplay::scheduleScreenShot(int timeSec)

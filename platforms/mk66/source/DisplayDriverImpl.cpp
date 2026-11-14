@@ -1,14 +1,5 @@
 #include "DisplayDriverImpl.h"
-#include "DMAChannel.h"
 #include "FT812.h"
-#include "wiring.h"
-
-static DMAChannel dmatx;
-DMASetting* dmasettings = nullptr;
-
-uint8_t DisplayDriverImpl::streamUpdateStep = 0;
-
-void dataTransferComplite();
 
 void DisplayDriverImpl::init()
 {
@@ -130,164 +121,23 @@ void DisplayDriverImpl::writeDataToCMD(const uint8_t* imgData, uint32_t totalDat
 }
 
 //========================================================================================================
-void DisplayDriverImpl::initStreamDma(uint16_t byteResolution,
-                                      uint16_t streamWidth,
-                                      uint16_t streamHeight,
-                                      uint8_t* streamBuf,
-                                      uint32_t destMemAddress)
+void DisplayDriverImpl::writeDisplayList(uint32_t offset, const uint32_t* words, uint32_t count)
 {
-    setUpdateDmaStep(0);
-
-    if (streamInitialized)
+    MCU_CSlow();
+    EVE_AddrForWr(RAM_DL + offset);
+    for (uint32_t i = 0; i < count; i++)
     {
-        return;
+        EVE_Write32(words[i]);
     }
-
-    uint32_t SCREEN_BUFF_SIZE = byteResolution * streamWidth * streamHeight;
-    uint32_t SCREEN_DMA_MAX_SIZE = 0xD000 / 2; // Divided by 2 because for 8 bit BITER and CITER
-                                               // have to be in 15-bits range and this is limitation
-    uint32_t SCREEN_DMA_NUM_SETTINGS = (((uint32_t)(SCREEN_BUFF_SIZE / SCREEN_DMA_MAX_SIZE)) + 1);
-
-    dmasettings = new DMASetting[SCREEN_DMA_NUM_SETTINGS];
-
-    streamBufDestMemAddress = destMemAddress;
-
-    const uint32_t bytesPerLine = streamWidth * byteResolution;
-    const uint32_t maxLines = (SCREEN_DMA_MAX_SIZE / bytesPerLine);
-    uint32_t transactionIdx = 0, sumLines = 0, lines;
-    do
-    {
-        // Source:
-        lines = min(maxLines, streamHeight - sumLines);
-        int32_t currentTransactionLength = lines * bytesPerLine;
-        dmasettings[transactionIdx].TCD->CSR = 0;
-        dmasettings[transactionIdx].TCD->SADDR =
-          &streamBuf[sumLines * streamWidth * byteResolution];
-
-        dmasettings[transactionIdx].TCD->SOFF = 1;
-        dmasettings[transactionIdx].TCD->ATTR_SRC = 0;
-        dmasettings[transactionIdx].TCD->NBYTES = 1;
-        dmasettings[transactionIdx].TCD->SLAST = -currentTransactionLength;
-        dmasettings[transactionIdx].TCD->BITER = currentTransactionLength;
-        dmasettings[transactionIdx].TCD->CITER = currentTransactionLength;
-
-        // Destination:
-        dmasettings[transactionIdx].TCD->DADDR = &SPI2_PUSHR;
-        dmasettings[transactionIdx].TCD->DOFF = 0;
-        dmasettings[transactionIdx].TCD->ATTR_DST = 0;
-        dmasettings[transactionIdx].TCD->DLASTSGA = 0;
-
-        dmasettings[transactionIdx].replaceSettingsOnCompletion(dmasettings[transactionIdx + 1]);
-        // dmasettings[transactionIdx].interruptAtCompletion();
-        sumLines += lines;
-
-    } while (++transactionIdx < SCREEN_DMA_NUM_SETTINGS);
-
-    dmasettings[SCREEN_DMA_NUM_SETTINGS - 1].replaceSettingsOnCompletion(dmasettings[0]);
-    dmasettings[SCREEN_DMA_NUM_SETTINGS - 1].interruptAtCompletion();
-    dmasettings[SCREEN_DMA_NUM_SETTINGS - 1].disableOnCompletion();
-
-    dmatx.begin(false);
-    dmatx.triggerAtHardwareEvent(DMAMUX_SOURCE_SPI2_TX);
-    dmatx = dmasettings[0];
-
-    dmatx.attachInterrupt(dataTransferComplite);
-
-    streamInitialized = true;
-}
-
-void DisplayDriverImpl::stopStreamDma()
-{
-    dmatx.disable();
-    dmatx.clearInterrupt();
-
-    SPI2_MCR |= SPI_MCR_HALT;
-
     MCU_CShigh();
-
-    (*(volatile uint16_t*)((int)&SPI2_PUSHR + 2)) = 0;
-    SPI2_RSER &= ~SPI_RSER_TFFF_DIRS;
-    SPI2_RSER &= ~SPI_RSER_TFFF_RE;
-    SPI2_MCR |= (SPI_MCR_CLR_TXF | SPI_MCR_CLR_RXF);
-    SPI2_SR |= (SPI_SR_TFFF | SPI_SR_TCF | SPI_SR_EOQF | SPI_SR_RFDF | SPI_SR_RFOF | SPI_SR_TFUF |
-                SPI_SR_TXRXS);
-
-    SPI2_MCR &= ~SPI_MCR_HALT;
-
-    setUpdateDmaStep(0);
 }
 
-bool DisplayDriverImpl::updateStreamDma(bool lastFrame)
+void DisplayDriverImpl::swapDisplayList()
 {
-    if (!streamInitialized)
-        return false;
-
-    if (streamUpdateStep == 0 && !lastFrame)
-        return false;
-
-    bool refreshScreenNow = false;
-
-    switch (streamUpdateStep)
-    {
-        case 0: // DMA send start
-        {
-            sendDataDma();
-            setUpdateDmaStep(1);
-            break;
-        }
-        case 1: // sending in progress
-        {
-            break;
-        }
-        case 2: // DMA transfer finished - time to show frame
-        {
-            refreshScreenNow = true;
-            setUpdateDmaStep(3);
-            break;
-        }
-        case 3:
-        {
-            setUpdateDmaStep(0);
-            break;
-        }
-    }
-
-    return refreshScreenNow;
+    EVE_MemWrite8(REG_DLSWAP, DLSWAP_FRAME);
 }
 
-void DisplayDriverImpl::sendDataDma()
+bool DisplayDriverImpl::isDisplayListSwapPending()
 {
-    MCU_CSlow(); // CS low begins SPI transaction
-    EVE_AddrForWr(streamBufDestMemAddress);
-
-    SPI2_MCR |= SPI_MCR_HALT;
-
-    //(*(volatile uint16_t *)((int)&SPI2_PUSHR + 2)) = (SPI_PUSHR_CTAS(1) | SPI_PUSHR_CONT) >> 16;
-    SPI2_RSER |= SPI_RSER_TFFF_DIRS | SPI_RSER_TFFF_RE; // Set ILI_DMA Interrupt Request Select and
-                                                        // Enable register
-
-    SPI2_MCR &= ~SPI_MCR_HALT; // Start transfers.
-
-    dmatx.enable();
-}
-
-void dataTransferComplite()
-{
-    dmatx.disable();
-    dmatx.clearInterrupt();
-
-    SPI2_MCR |= SPI_MCR_HALT;
-
-    MCU_CShigh();
-
-    (*(volatile uint16_t*)((int)&SPI2_PUSHR + 2)) = 0;
-    SPI2_RSER &= ~SPI_RSER_TFFF_DIRS;
-    SPI2_RSER &= ~SPI_RSER_TFFF_RE;
-    SPI2_MCR |= (SPI_MCR_CLR_TXF | SPI_MCR_CLR_RXF);
-    SPI2_SR |= (SPI_SR_TFFF | SPI_SR_TCF | SPI_SR_EOQF | SPI_SR_RFDF | SPI_SR_RFOF | SPI_SR_TFUF |
-                SPI_SR_TXRXS);
-
-    SPI2_MCR &= ~SPI_MCR_HALT;
-
-    DisplayDriverImpl::setUpdateDmaStep(2);
+    return EVE_MemRead8(REG_DLSWAP) != 0;
 }

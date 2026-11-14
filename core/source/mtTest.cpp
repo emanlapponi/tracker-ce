@@ -121,8 +121,7 @@ void cTest::testLoop()
 //==========================================================================================
 void cTest::drawGui()
 {
-    display.getDisplayDriver()->beginCoProList();
-    API_CMD_DLSTART();
+    display.beginScreen();
 
     API_VERTEX_FORMAT(0);
     API_CLEAR_COLOR(0x000000);
@@ -146,10 +145,7 @@ void cTest::drawGui()
         case checkEnd: showEnd(); break;
     }
 
-    API_DISPLAY();
-    API_CMD_SWAP();
-
-    display.getDisplayDriver()->endCoProList();
+    display.showScreen();
 }
 
 void cTest::doTasks()
