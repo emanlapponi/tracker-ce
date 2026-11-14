@@ -100,11 +100,11 @@ The Tracker audio engine supports **3 active synth slots** (`SYN 1`, `SYN 2`, `S
 
 Engines packaged with `--audio-input 1` (`PSYN_FLAG_AUDIO_INPUT`) receive host audio and can act as insert effects. [`synth-plugin-sdk/engines/bus.cpp`](../synth-plugin-sdk/engines/bus.cpp) is the reference implementation.
 
-- **Source params**: Set `Patch::Metadata::Param::inputSource` (`input_source` in `PsynParamDesc`) on an on/off param. While its value is above `0.5`, the host sums that source into the engine input and removes it from its normal mix. Source ids are `Param::kInputSourceSynthBase + n` for synth part `n`.
+- **Source params**: Set `Patch::Metadata::Param::inputSource` (`input_source` in `PsynParamDesc`) on an on/off param. While its value is above `0.5`, the host sums that source into the engine input and removes it from its normal mix. Source ids are `n` for sample track `n` (`0`-`7`, tapped after the track volume, panning and filter, so those controls also scale the engine input) and `Param::kInputSourceSynthBase + n` for synth part `n`.
 - **Render order**: A part only receives synth parts before it (`SYN 1` can feed `SYN 2` or `SYN 3`, never the reverse). Params naming unavailable sources are ignored.
 - **Input buffer**: Delivered as the `inputBuffer` argument of `renderVoiceAudio` (C++) or `PsynAudioInput` of `voice_render_audio_in` (Pure C, appended to `PsynPluginApi`). It is empty when nothing is routed.
 - **Voices**: Set `metadata.maxVoices = 1` (and `--max-voices 1`), otherwise the input is processed once per voice.
-- **Sends**: A routed source keeps its delay/reverb sends.
+- **Sends**: A routed source keeps its delay/reverb sends. Routed tracks still appear in their own stems.
 
 ---
 

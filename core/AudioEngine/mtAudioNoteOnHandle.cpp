@@ -469,8 +469,7 @@ AUDIO_CORE_RAM void playerEngine::handleNoteOnPanning()
         monoToStereoPtr->gain(1.0f, MonoToStereo::Channel::right);
         monoToStereoPtr->gain(1.0f, MonoToStereo::Channel::right);
 #else
-        engine.getMixerAndFx()->getTracksMixer(MixerAndFxChannelType::kLeft)->gain(nChannel, 1.0f);
-        engine.getMixerAndFx()->getTracksMixer(MixerAndFxChannelType::kRight)->gain(nChannel, 1.0f);
+        engine.updateTrackDirectGain(nChannel);
 #endif
     }
 

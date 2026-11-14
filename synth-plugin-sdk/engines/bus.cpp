@@ -20,9 +20,18 @@ enum class BusParamId : int
     kThreshold,
     kAttack,
     kRelease,
+    kTrack1,
+    kTrack2,
+    kTrack3,
+    kTrack4,
+    kTrack5,
+    kTrack6,
+    kTrack7,
+    kTrack8,
 };
 
 static constexpr int kSynthSources = 3;
+static constexpr int kTrackSources = 8;
 
 std::string formatOnOff(const Patch& /*patch*/, Patch::paramvalue_t value)
 {
@@ -37,8 +46,8 @@ float msToCoeff(float ms)
 } // namespace
 
 /**
- * Receives the synth parts routed through its source params and runs them through a limiter
- * (the master limiter algorithm, in float).
+ * Receives the tracks and synth parts routed through its source params and runs them through a
+ * limiter (the master limiter algorithm, in float).
  */
 class BusVoice : public sdk::CustomSynthVoice<BusVoice, BusParamId>
 {
@@ -107,18 +116,16 @@ class BusVoice : public sdk::CustomSynthVoice<BusVoice, BusParamId>
 
         for (int i = 0; i < kSynthSources; ++i)
         {
-            helper.addParam(
-              *BusParamId::kSynth1 + i,
-              {
-                .displayName = fmt::format("Synth {}", i + 1),
-                .defaultValue = 0,
-                .minValue = 0,
-                .maxValue = 1,
-                .isEnum = true,
-                .valueFormatter = formatOnOff,
-                .inputSource = Patch::Metadata::Param::kInputSourceSynthBase + i,
-              },
-              [](auto& /*voice*/, Patch::optional_paramvalue_t /*val*/) {});
+            addSourceParam(helper,
+                           *BusParamId::kSynth1 + i,
+                           fmt::format("Synth {}", i + 1),
+                           Patch::Metadata::Param::kInputSourceSynthBase + i);
+        }
+
+        for (int i = 0; i < kTrackSources; ++i)
+        {
+            addSourceParam(
+              helper, *BusParamId::kTrack1 + i, fmt::format("Track {}", i + 1), i);
         }
 
         helper.addParam(
@@ -178,17 +185,21 @@ class BusVoice : public sdk::CustomSynthVoice<BusVoice, BusParamId>
           [](auto& voice, Patch::optional_paramvalue_t val)
           { voice.releaseCoeff = msToCoeff(*val); });
 
+        Patch::Metadata::EditorLayout::EditorSection mixer{ .name = "Mixer", .shortName = "Mixer" };
+        for (int i = 0; i < kTrackSources; ++i)
+        {
+            mixer.elements.push_back(
+              { .type = EditorElement::Type::kParam, .id = *BusParamId::kTrack1 + i });
+        }
+        for (int i = 0; i < kSynthSources; ++i)
+        {
+            mixer.elements.push_back(
+              { .type = EditorElement::Type::kParam, .id = *BusParamId::kSynth1 + i });
+        }
+
         metadata.layoutFlat = Patch::Metadata::EditorLayout{
             .sections = {
-              {
-                .name = "Mixer",
-                .shortName = "Mixer",
-                .elements = {
-                  { .type = EditorElement::Type::kParam, .id = *BusParamId::kSynth1 },
-                  { .type = EditorElement::Type::kParam, .id = *BusParamId::kSynth2 },
-                  { .type = EditorElement::Type::kParam, .id = *BusParamId::kSynth3 },
-                },
-              },
+              std::move(mixer),
               {
                 .name = "FX",
                 .shortName = "FX",
@@ -209,6 +220,25 @@ class BusVoice : public sdk::CustomSynthVoice<BusVoice, BusParamId>
     }
 
   private:
+    static void addSourceParam(sdk::ParamHelper<BusVoice>& helper,
+                               int paramId,
+                               std::string name,
+                               int inputSource)
+    {
+        helper.addParam(
+          paramId,
+          {
+            .displayName = std::move(name),
+            .defaultValue = 0,
+            .minValue = 0,
+            .maxValue = 1,
+            .isEnum = true,
+            .valueFormatter = formatOnOff,
+            .inputSource = inputSource,
+          },
+          [](auto& /*voice*/, Patch::optional_paramvalue_t /*val*/) {});
+    }
+
     static constexpr size_t kLimiterDelay = 5;
 
     bool limiterEnabled = true;

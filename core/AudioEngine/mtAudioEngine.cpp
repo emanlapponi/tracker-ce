@@ -20,6 +20,10 @@ static constexpr int kSdStreamBufferSize = (256 + 64) * 1024;
 extern uint8_t externalRamScratchBuff[];
 static_assert(kSdStreamBufferSize <= SHARED_SCRATCH_MEMORY_SIZE,
               "sdStreamBuffer exceeds shared scratch size");
+#ifdef FEATURE_SYNTH
+static_assert(PolySynth::kTrackInputs == audioEngine::kVoices,
+              "PolySynth must have an input for each track");
+#endif
 
 playerEngine instrumentPlayer[audioEngine::kVoices];
 audioEngine engine;
@@ -136,6 +140,9 @@ audioEngine::audioEngine()
         connectVoiceToOutput(instrumentPlayer[voiceIdx].getAudioVoice(), &output, voiceIdx);
         connectVoiceToExportQueue(
           instrumentPlayer[voiceIdx].getAudioVoice(), &exportQueues, voiceIdx);
+#ifdef FEATURE_SYNTH
+        connectVoiceToSynth(instrumentPlayer[voiceIdx].getAudioVoice(), &synthVoice, voiceIdx);
+#endif
     }
 #ifdef FEATURE_SYNTH
     connectSynthToMixer(&mixerAndFxs, &synthVoice);
@@ -303,6 +310,7 @@ AUDIO_CORE_RAM void audioEngine::update()
 
 #ifdef FEATURE_SYNTH
         updateSynthParams();
+        updateRoutedTracks();
 #endif
     }
 }
@@ -574,6 +582,20 @@ void audioEngine::connectMixerToOutput(MixerAndFxs<kVoices>* mixerAndFxs, AudioO
 #endif
 }
 #ifdef FEATURE_SYNTH
+void audioEngine::connectVoiceToSynth(AudioVoice* voice, SynthVoice* synth, int idx)
+{
+    connections.push_back(
+      new AudioConnection(voice->getPanningAmplifier(AudioVoice::VoiceChannels::kLeft),
+                          0,
+                          synth->getPolySynth(),
+                          2 * idx));
+    connections.push_back(
+      new AudioConnection(voice->getPanningAmplifier(AudioVoice::VoiceChannels::kRight),
+                          0,
+                          synth->getPolySynth(),
+                          2 * idx + 1));
+}
+
 void audioEngine::connectSynthToMixer(MixerAndFxs<kVoices>* mixerAndFxs, SynthVoice* synth)
 {
     constexpr int kFirstSynthMixerChannel = 2 + 2 * kVoices;
@@ -1309,6 +1331,28 @@ AUDIO_CORE_RAM void audioEngine::setSynthMacro(int synthIdx, int macroIdx, float
 
     int ccIdx = SynthVoice::kMacroCCIdxStart + macroIdx;
     sendCC(ccIdx, value, synthIdx + 1, true);
+}
+
+AUDIO_CORE_RAM void audioEngine::updateTrackDirectGain(uint8_t track)
+{
+    const float gain = (routedTracks & (1 << track)) ? 0.0f : 1.0f;
+    mixerAndFxs.getTracksMixer(MixerAndFxChannelType::kLeft)->gain(track, gain);
+    mixerAndFxs.getTracksMixer(MixerAndFxChannelType::kRight)->gain(track, gain);
+}
+
+AUDIO_CORE_RAM void audioEngine::updateRoutedTracks()
+{
+    const uint8_t routed = synthVoice.getPolySynth()->getRoutedTracks();
+    const uint8_t changed = routed ^ routedTracks;
+    routedTracks = routed;
+
+    for (int track = 0; track < kVoices; track++)
+    {
+        if (changed & (1 << track))
+        {
+            updateTrackDirectGain(track);
+        }
+    }
 }
 
 AUDIO_CORE_RAM void audioEngine::updateSynthParams()

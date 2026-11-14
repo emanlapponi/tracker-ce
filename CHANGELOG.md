@@ -18,7 +18,7 @@ All notable changes to the **Polyend Tracker Community Edition (CE)** firmware a
 1. **Open Synth SDK & New `CHIP` + `DIRT` Synthesizer Engines (Tracker+ & Tracker Mini)**
    * Added a new Open Synth SDK allowing the community to add new synthesizer engines. `CHIP` is the first implementation of this open architecture.
    * Added **`DIRT`** (wave-shaping/distortion synth).
-   * Added **`BUS`**, an insert effect engine with a limiter that takes over selected synth parts. The Synth SDK now lets engines receive audio input.
+   * Added **`BUS`**, an insert effect engine with a limiter that takes over selected sample tracks and synth parts. The Synth SDK now lets engines receive audio input.
    * See [`docs/custom_synth_sdk.md`](docs/custom_synth_sdk.md) to learn more about developing your own engines.
 
 2. **Modular Sample Editor Effect & Generator Plugins (All 3 Devices)**
