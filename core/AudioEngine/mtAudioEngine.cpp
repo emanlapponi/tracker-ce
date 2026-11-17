@@ -226,7 +226,7 @@ void audioEngine::init(Platform* platform, [[maybe_unused]] Synth* synth)
     //	filterReverbOut.setType(filterType::lowPass);
     //	filterReverbOut.setCutoff(1.0);
     //	filterReverbOut.connect();
-    delay->begin(mtProject.values.delayFeedback,
+    delay->begin(mtProject.values.delayFeedback / 100.0,
                  mtProject.values.delayTime,
                  mtProject.values.delayParams & 0b10000000,
                  mtProject.values.delayParams & 0b01000000,
@@ -256,7 +256,7 @@ void audioEngine::init(Platform* platform, [[maybe_unused]] Synth* synth)
 
     polyverb->reset();
     polyverb->setTime(mtProject.values.reverb.size);
-    polyverb->setDamp(mtProject.values.reverb.damp);
+    polyverb->setDamp(1.0f - mtProject.values.reverb.damp);
     polyverb->SetPredelayLength(mtProject.values.reverb.predelay);
     polyverb->SetDiffusion(mtProject.values.reverb.diffusion);
     polyverb->unblockUpdate();
@@ -267,7 +267,7 @@ void audioEngine::init(Platform* platform, [[maybe_unused]] Synth* synth)
     masterEnhancer.fiveBandsEq.enable(mtProject.values.eqBandAdjustment);
     masterEnhancer.enable();
 
-    setLineInOutType(mtConfig.general.lineInOutType);
+    setLineInOutType(AudioStereoToMono::OutSignalType::stereo);
 
     input.getGate(AudioInput::InputChannels::kLeft)->gate(GATE_DB);
     input.getGate(AudioInput::InputChannels::kRight)->gate(GATE_DB);
@@ -324,44 +324,21 @@ void audioEngine::updateSdStream()
 AUDIO_CORE_RAM void audioEngine::updateAudioBuffers(void* left, void* right, int length)
 {
     (void)length;
+    output.getUsbStream()->syncActive();
     output.getStream()->setOutBuffers(left, right);
     AudioStream::update_all();
 }
 
 AUDIO_CORE_RAM void audioEngine::updateInputAudioBuffers(void* i2sData,
-                                                         [[maybe_unused]] void* usbData,
+                                                         void* usbData,
                                                          int length)
 {
     (void)length;
 
     input.getI2sStream()->setInBuffer(i2sData);
-#ifdef PLATFORM_IMX
     input.getUsbStream()->setInBuffer(usbData);
-#endif
 }
 
-#ifndef PLATFORM_IMX
-void audioEngine::connectVoiceToMixer(AudioVoice* voice, MixerAndFxs<kVoices>* mixerAndFxs, int idx)
-{
-    connections.push_back(new AudioConnection(
-      voice->getMonoToStereo(), 0, mixerAndFxs->getTracksMixer(MixerAndFxChannelType::kLeft), idx));
-    connections.push_back(
-      new AudioConnection(voice->getMonoToStereo(),
-                          1,
-                          mixerAndFxs->getTracksMixer(MixerAndFxChannelType::kRight),
-                          idx));
-    connections.push_back(
-      new AudioConnection(voice->getFilter(),
-                          0,
-                          mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kReverb),
-                          idx));
-    connections.push_back(
-      new AudioConnection(voice->getFilter(),
-                          0,
-                          mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay),
-                          idx));
-}
-#else
 void audioEngine::connectVoiceToMixer(AudioVoice* voice, MixerAndFxs<kVoices>* mixerAndFxs, int idx)
 {
     constexpr int kInputsChannels = 2;
@@ -398,7 +375,6 @@ void audioEngine::connectVoiceToMixer(AudioVoice* voice, MixerAndFxs<kVoices>* m
                           mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay),
                           kVoices + kInputsChannels + idx));
 }
-#endif
 
 void audioEngine::connectInputToMixer(AudioInput* input, MixerAndFxs<kVoices>* mixerAndFxs)
 {
@@ -429,6 +405,19 @@ void audioEngine::connectInputToMixer(AudioInput* input, MixerAndFxs<kVoices>* m
                           mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kReverb),
                           kRightInputMixerChannel));
 
+#ifdef AUDIO_NULL_IS_SILENCE
+    input->getGate(AudioInput::InputChannels::kLeft)
+      ->setSilenceWatch(mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay),
+                        kLeftInputMixerChannel,
+                        mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kReverb),
+                        kLeftInputMixerChannel);
+    input->getGate(AudioInput::InputChannels::kRight)
+      ->setSilenceWatch(mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay),
+                        kRightInputMixerChannel,
+                        mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kReverb),
+                        kRightInputMixerChannel);
+#endif
+
     constexpr int kTracksAndSendsMixerInputIdx = 3;
 
     connections.push_back(
@@ -444,26 +433,20 @@ void audioEngine::connectInputToMixer(AudioInput* input, MixerAndFxs<kVoices>* m
                           kTracksAndSendsMixerInputIdx));
 }
 
-#ifndef PLATFORM_IMX
 void audioEngine::connectVoiceToOutput(AudioVoice* voice, AudioOutput* output, int idx)
 {
     connections.push_back(
-      new AudioConnection(voice->getAmplifier(), 0, output->getLimiterSidechainMux(), idx));
-}
-#else
-void audioEngine::connectVoiceToOutput(AudioVoice* voice, AudioOutput* output, int idx)
-{
-    connections.push_back(
-      new AudioConnection(voice->getAmplifier(AudioVoice::VoiceChannels::kLeft),
+      new AudioConnection(voice->getStereoMirror(),
                           0,
                           output->getLimiterSidechainMux(AudioOutput::OutputChannels::kLeft),
                           idx));
     connections.push_back(
-      new AudioConnection(voice->getAmplifier(AudioVoice::VoiceChannels::kRight),
-                          0,
+      new AudioConnection(voice->getStereoMirror(),
+                          1,
                           output->getLimiterSidechainMux(AudioOutput::OutputChannels::kRight),
                           idx));
 
+#ifdef PLATFORM_IMX
     int leftOutAudioUsbIdx = AudioOutput::OutputChannels::kChannelsCount * idx;
     int rightOutAudioUsbIdx = leftOutAudioUsbIdx + 1;
 
@@ -477,26 +460,8 @@ void audioEngine::connectVoiceToOutput(AudioVoice* voice, AudioOutput* output, i
                           0,
                           output->getUsbStream(),
                           rightOutAudioUsbIdx));
-}
 #endif
-
-#ifndef PLATFORM_IMX
-void audioEngine::connectInputToOutput(AudioInput* input, AudioOutput* output)
-{
-    constexpr int kLeftInputMixerChannel = 8;
-    constexpr int kRightInputMixerChannel = 9;
-
-    connections.push_back(new AudioConnection(input->getStereoToMono(),
-                                              AudioInput::InputChannels::kLeft,
-                                              output->getLimiterSidechainMux(),
-                                              kLeftInputMixerChannel));
-
-    connections.push_back(new AudioConnection(input->getStereoToMono(),
-                                              AudioInput::InputChannels::kRight,
-                                              output->getLimiterSidechainMux(),
-                                              kRightInputMixerChannel));
 }
-#else
 
 void audioEngine::connectInputToOutput(AudioInput* input, AudioOutput* output)
 {
@@ -541,7 +506,6 @@ void audioEngine::connectInputToOutput(AudioInput* input, AudioOutput* output)
                           output->getStream(),
                           kRightUsbToOutputChannel));
 }
-#endif
 
 void audioEngine::connectMixerToOutput(MixerAndFxs<kVoices>* mixerAndFxs, AudioOutput* output)
 {
@@ -734,24 +698,6 @@ void audioEngine::connectSpecialInputsToOutput(AudioOutput* output)
     }
 }
 
-#ifndef PLATFORM_IMX
-void audioEngine::connectVoiceToExportQueue(AudioVoice* voice, ExportQueues* exportQueues, int idx)
-{
-    connections.push_back(new AudioConnection(
-      voice->getMonoToStereo(),
-      ExportQueues::ExportChannels::kLeft,
-      exportQueues->getQueue(ExportQueues::ExportChannels::kLeft,
-                             (mtAudioExport::enStem)((int)mtAudioExport::stem_tracks_start + idx)),
-      0));
-
-    connections.push_back(new AudioConnection(
-      voice->getMonoToStereo(),
-      ExportQueues::ExportChannels::kRight,
-      exportQueues->getQueue(ExportQueues::ExportChannels::kRight,
-                             (mtAudioExport::enStem)((int)mtAudioExport::stem_tracks_start + idx)),
-      0));
-}
-#else
 void audioEngine::connectVoiceToExportQueue(AudioVoice* voice, ExportQueues* exportQueues, int idx)
 {
     connections.push_back(new AudioConnection(
@@ -768,7 +714,6 @@ void audioEngine::connectVoiceToExportQueue(AudioVoice* voice, ExportQueues* exp
                              (mtAudioExport::enStem)((int)mtAudioExport::stem_tracks_start + idx)),
       0));
 }
-#endif
 
 void audioEngine::connectMixerToExportQueue(MixerAndFxs<kVoices>* mixerAndFxs,
                                             ExportQueues* exportQueues)
@@ -870,7 +815,6 @@ void audioEngine::performanceModeEndAll()
     }
 }
 
-#ifdef PLATFORM_IMX
 void audioEngine::refreshOutputSourceOutsideTheRecorder()
 {
     bool isUsbOutputAndInput = mtConfig.common.usbAudioMode == 3;
@@ -891,7 +835,6 @@ void audioEngine::forceUsbGainOutsideTheRecorder()
     input.getUsbRecordingAmplifier(AudioInput::InputChannels::kLeft)->gain(1.0f);
     input.getUsbRecordingAmplifier(AudioInput::InputChannels::kRight)->gain(1.0f);
 }
-#endif
 
 void audioEngine::refreshTrackVolume()
 {
@@ -1115,17 +1058,15 @@ void audioEngine::setLimiterThreshold(uint16_t threshold)
 
 void audioEngine::setLimiterSidechain(uint8_t sidechain)
 {
-    limiter[AudioOutput::OutputChannels::kLeft]->setSidechainEnable((bool)sidechain);
-    limiter[AudioOutput::OutputChannels::kRight]->setSidechainEnable((bool)sidechain);
-
     uint8_t mux = sidechain ? sidechain - 1 : 0;
 
-#ifndef PLATFORM_IMX
-    output.getLimiterSidechainMux()->setOut(mux);
-#else
     output.getLimiterSidechainMux(AudioOutput::OutputChannels::kLeft)->setOut(mux);
+    output.getLimiterSidechainMux(AudioOutput::OutputChannels::kLeft)->setEnabled(sidechain != 0);
     output.getLimiterSidechainMux(AudioOutput::OutputChannels::kRight)->setOut(mux);
-#endif
+    output.getLimiterSidechainMux(AudioOutput::OutputChannels::kRight)->setEnabled(sidechain != 0);
+    __atomic_signal_fence(__ATOMIC_SEQ_CST);
+    limiter[AudioOutput::OutputChannels::kLeft]->setSidechainEnable((bool)sidechain);
+    limiter[AudioOutput::OutputChannels::kRight]->setSidechainEnable((bool)sidechain);
 }
 #ifdef FEATURE_SYNTH
 
@@ -1359,6 +1300,10 @@ AUDIO_CORE_RAM void audioEngine::updateSynthParams()
 {
     for (int synthIdx = 0; synthIdx < kSynthParts; synthIdx++)
     {
+        if (isSynthParamDirty[synthIdx].none())
+        {
+            continue;
+        }
         for (int paramIdx = 0; paramIdx < SynthParam::kSynthParamsCount; paramIdx++)
         {
             updateSynthParam(synthIdx, (SynthParam)paramIdx);
@@ -1655,14 +1600,11 @@ void audioEngine::setSaturationType(SaturationType type)
     getMixerAndFx()->getTracksAndSendsMixer(MixerAndFxChannelType::kRight)->setSaturationType(type);
 }
 
-#ifdef PLATFORM_IMX
-
 void audioEngine::setOutputSource(OutputSourceType source)
 {
     getAudioOutput()->getStream()->selectSource(0, source);
     getAudioOutput()->getStream()->selectSource(1, source);
 }
-#endif
 
 void audioEngine::setInputConfigOutsideRecorderInterfaceModule()
 {
@@ -1717,14 +1659,6 @@ playerEngine::playerEngine()
     // umieszczone w tablicy(instrumentPlayer) na tej podstawie jest wyznaczany index(nChannel)
     nChannel = ((uint32_t)this - (uint32_t)instrumentPlayer) / sizeof(playerEngine);
 
-#ifndef PLATFORM_IMX
-    monoToStereoPtr = audioVoice.getMonoToStereo();
-    playMemPtr.push_back(audioVoice.getMemoryPlayer());
-    filterPtr.push_back(audioVoice.getFilter());
-    bitDepthPtr.push_back(audioVoice.getBitDepth());
-    ampPtr.push_back(audioVoice.getAmplifier());
-    rmsPtr.push_back(audioVoice.getRMS());
-#else
     for (int channel = 0; channel < AudioVoice::VoiceChannels::kChannelsCount; channel++)
     {
         playMemPtr.push_back(audioVoice.getMemoryPlayer((AudioVoice::VoiceChannels)channel));
@@ -1735,7 +1669,6 @@ playerEngine::playerEngine()
           audioVoice.getPanningAmplifier((AudioVoice::VoiceChannels)channel));
         rmsPtr.push_back(audioVoice.getRMS((AudioVoice::VoiceChannels)channel));
     }
-#endif
     envelopePtr[envCutoff] =
       audioVoice.getEnvelopeGenerator(AudioVoice::EnvelopeGeneratorType::kFilter);
     envelopePtr[envWtPos] =
@@ -1796,13 +1729,8 @@ AUDIO_CORE_RAM void playerEngine ::modPanning(int16_t value)
         gainR = 1.0;
         gainL = 1.0;
     }
-#ifndef PLATFORM_IMX
-    monoToStereoPtr->gain(gainL, MonoToStereo::Channel::left);
-    monoToStereoPtr->gain(gainR, MonoToStereo::Channel::right);
-#else
     panningAmplifierPtr[(int)MixerAndFxChannelType::kLeft]->gain(gainL);
     panningAmplifierPtr[(int)MixerAndFxChannelType::kRight]->gain(gainR);
-#endif
 }
 
 AUDIO_CORE_RAM void playerEngine::modVolume(float value)
@@ -1908,21 +1836,23 @@ AUDIO_CORE_RAM void playerEngine ::modTune(int8_t value)
 
 AUDIO_CORE_RAM void playerEngine ::modDelaySend(uint8_t value)
 {
-#ifdef PLATFORM_IMX
     static constexpr int kInputsChannels = 2;
-#endif
     if (mtProject.values.sendsMode == sendsModePreFader)
     {
 
         float gain = mtProject.values.delayMute
                        ? AMP_MUTED
                        : sendsAmpLogValues[value] * mixAmpLogValues[mtProject.values.delayVolume];
-#ifndef PLATFORM_IMX
-        preDelayMixer->gain(nChannel, gain);
-#else
-        preDelayMixer->gain(nChannel, gain / 2.0f);
-        preDelayMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, gain / 2.0f);
-#endif
+        if (voiceIsStereo)
+        {
+            preDelayMixer->gain(nChannel, gain / 2.0f);
+            preDelayMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, gain / 2.0f);
+        }
+        else
+        {
+            preDelayMixer->gain(nChannel, gain);
+            preDelayMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, 0.0f);
+        }
     }
     else if (mtProject.values.sendsMode == sendsModePostFader)
     {
@@ -1934,12 +1864,16 @@ AUDIO_CORE_RAM void playerEngine ::modDelaySend(uint8_t value)
                                mixAmpLogValues[mtProject.values.trackVolume[nChannel]];
 
         float gain = isMute ? AMP_MUTED : gainFromDelay * gainFromVolume;
-#ifndef PLATFORM_IMX
-        preDelayMixer->gain(nChannel, gain);
-#else
-        preDelayMixer->gain(nChannel, gain / 2.0f);
-        preDelayMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, gain / 2.0f);
-#endif
+        if (voiceIsStereo)
+        {
+            preDelayMixer->gain(nChannel, gain / 2.0f);
+            preDelayMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, gain / 2.0f);
+        }
+        else
+        {
+            preDelayMixer->gain(nChannel, gain);
+            preDelayMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, 0.0f);
+        }
     }
 }
 AUDIO_CORE_RAM void playerEngine ::modReverbSend(uint8_t value)
@@ -1950,12 +1884,16 @@ AUDIO_CORE_RAM void playerEngine ::modReverbSend(uint8_t value)
         float gain = mtProject.values.reverbMute
                        ? AMP_MUTED
                        : sendsAmpLogValues[value] * mixAmpLogValues[mtProject.values.reverbVolume];
-#ifndef PLATFORM_IMX
-        prePolyverbMixer->gain(nChannel, gain);
-#else
-        prePolyverbMixer->gain(nChannel, gain / 2.0f);
-        prePolyverbMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, gain / 2.0f);
-#endif
+        if (voiceIsStereo)
+        {
+            prePolyverbMixer->gain(nChannel, gain / 2.0f);
+            prePolyverbMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, gain / 2.0f);
+        }
+        else
+        {
+            prePolyverbMixer->gain(nChannel, gain);
+            prePolyverbMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, 0.0f);
+        }
     }
     else if (mtProject.values.sendsMode == sendsModePostFader)
     {
@@ -1967,12 +1905,16 @@ AUDIO_CORE_RAM void playerEngine ::modReverbSend(uint8_t value)
                                mixAmpLogValues[mtProject.values.trackVolume[nChannel]];
 
         float gain = isMute ? AMP_MUTED : gainFromReverb * gainFromVolume;
-#ifndef PLATFORM_IMX
-        prePolyverbMixer->gain(nChannel, gain);
-#else
-        prePolyverbMixer->gain(nChannel, gain / 2.0f);
-        prePolyverbMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, gain / 2.0f);
-#endif
+        if (voiceIsStereo)
+        {
+            prePolyverbMixer->gain(nChannel, gain / 2.0f);
+            prePolyverbMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, gain / 2.0f);
+        }
+        else
+        {
+            prePolyverbMixer->gain(nChannel, gain);
+            prePolyverbMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, 0.0f);
+        }
     }
 }
 
@@ -2194,18 +2136,35 @@ uint8_t playerEngine ::noteOnWithoutInstrument(std::vector<int16_t*> addr,
 
     assert(playMemPtr.size() <= addr.size());
 
-    for (int channel = 0; channel < (int)playMemPtr.size(); channel++)
-    {
-        playMemPtr[channel]->envelopeSetIsRandom(false);
+    const bool isStereo = (addr.size() > 1 && addr[1] != nullptr && addr[1] != addr[0]);
+    voiceIsStereo = isStereo;
+    audioVoice.setStereo(isStereo);
 
+    playMemPtr[0]->envelopeSetIsRandom(false);
+    if (note == 255)
+    {
+        playMemPtr[0]->envelopeNoteOnForPrev(addr[0], len, type);
+    }
+    else
+    {
+        playMemPtr[0]->envelopeNoteOnForPrev(addr[0], len, note, type);
+    }
+
+    if (isStereo)
+    {
+        playMemPtr[1]->envelopeSetIsRandom(false);
         if (note == 255)
         {
-            playMemPtr[channel]->envelopeNoteOnForPrev(addr[channel], len, type);
+            playMemPtr[1]->envelopeNoteOnForPrev(addr[1], len, type);
         }
         else
         {
-            playMemPtr[channel]->envelopeNoteOnForPrev(addr[channel], len, note, type);
+            playMemPtr[1]->envelopeNoteOnForPrev(addr[1], len, note, type);
         }
+    }
+    else
+    {
+        playMemPtr[1]->stop();
     }
 
     return 1;
@@ -2376,20 +2335,25 @@ void audioEngine::clearReverb()
 #endif
 }
 
+void audioEngine::resetDelay()
+{
+    if (delay != nullptr)
+    {
+        delay->clear();
+    }
+}
+
 void audioEngine::resetLimiter()
 {
     limiter[AudioOutput::OutputChannels::kLeft]->begin();
     limiter[AudioOutput::OutputChannels::kRight]->begin();
 
-#ifndef PLATFORM_IMX
-    output.getLimiterSidechainMux()->setOut(
-      mtProject.values.limiterSidechain ? mtProject.values.limiterSidechain - 1 : 0);
-#else
-    output.getLimiterSidechainMux(AudioOutput::OutputChannels::kLeft)
-      ->setOut(mtProject.values.limiterSidechain ? mtProject.values.limiterSidechain - 1 : 0);
-    output.getLimiterSidechainMux(AudioOutput::OutputChannels::kRight)
-      ->setOut(mtProject.values.limiterSidechain ? mtProject.values.limiterSidechain - 1 : 0);
-#endif
+    const bool scEnabled = mtProject.values.limiterSidechain != 0;
+    const uint8_t scMux = mtProject.values.limiterSidechain ? mtProject.values.limiterSidechain - 1 : 0;
+    output.getLimiterSidechainMux(AudioOutput::OutputChannels::kLeft)->setOut(scMux);
+    output.getLimiterSidechainMux(AudioOutput::OutputChannels::kLeft)->setEnabled(scEnabled);
+    output.getLimiterSidechainMux(AudioOutput::OutputChannels::kRight)->setOut(scMux);
+    output.getLimiterSidechainMux(AudioOutput::OutputChannels::kRight)->setEnabled(scEnabled);
 }
 
 void audioEngine::muteDelaySend(uint8_t channel, uint8_t state)

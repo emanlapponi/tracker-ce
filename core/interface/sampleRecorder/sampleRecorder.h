@@ -6,38 +6,19 @@
 #include "mtStructs.h"
 
 #ifndef TRACKER_MINI
-#ifdef PLATFORM_IMX
-const uint8_t sourceCount = 5;
-const char* const ptrSourcesNamesLabels[5] = {
-    (char* const)"Line in", (char* const)"Radio", (char* const)"Mic LG",
-    (char* const)"Mic HG",  (char* const)"USB",
+const uint8_t sourceCount = 9;
+const char* const ptrSourcesNamesLabels[9] = {
+    (char* const)"Line In (L)", (char* const)"Line In (R)", (char* const)"Line In (M)",
+    (char* const)"Line In",     (char* const)"Radio",       (char* const)"Mic LG",
+    (char* const)"Mic HG",      (char* const)"USB (M)",     (char* const)"USB",
 };
 #else
-const uint8_t sourceCount = 4;
-const char* const ptrSourcesNamesLabels[5] = {
-    (char* const)"Line in",
-    (char* const)"Radio",
-    (char* const)"Mic LG",
-    (char* const)"Mic HG",
-};
-#endif
-#else
-#ifdef PLATFORM_IMX
-const uint8_t sourceCount = 3;
-const char* const ptrSourcesNamesLabels[5] = {
-    (char* const)"Line in",
-    (char* const)"Mic",
+const uint8_t sourceCount = 7;
+const char* const ptrSourcesNamesLabels[9] = {
+    (char* const)"Line In (L)", (char* const)"Line In (R)", (char* const)"Line In (M)",
+    (char* const)"Line In",     (char* const)"Mic",         (char* const)"USB (M)",
     (char* const)"USB",
-
 };
-#else
-const uint8_t sourceCount = 2;
-const char* const ptrSourcesNamesLabels[5] = {
-    (char* const)"Line in",
-    (char* const)"Mic",
-
-};
-#endif
 #endif
 
 const uint8_t monitorCount = 2;
@@ -229,24 +210,44 @@ class cSampleRecorder : public ModuleBase
 
     enum sourceType
     {
-        sourceTypeLineIn,
+        sourceTypeLineInL,
+        sourceTypeLineInR,
+        sourceTypeLineInM,
+        sourceTypeLineInS,
 #ifndef TRACKER_MINI
         sourceTypeRadio,
         sourceTypeMicLG, // = tracker mini mic
         sourceTypeMicHG,
-#ifdef PLATFORM_IMX
-        sourceTypeUsb,
-#endif
+        sourceTypeUsbMix,
+        sourceTypeUsbStereo,
 #else
         sourceTypeMicLG, // = tracker mini mic
-#ifdef PLATFORM_IMX
-        sourceTypeUsb,
-#endif
+        sourceTypeUsbMix,
+        sourceTypeUsbStereo,
         sourceTypeMicHG,
         sourceTypeRadio,
 #endif
-
     };
+
+    bool isLineInSource() const
+    {
+        return recorderConfig.source == sourceTypeLineInL ||
+               recorderConfig.source == sourceTypeLineInR ||
+               recorderConfig.source == sourceTypeLineInM ||
+               recorderConfig.source == sourceTypeLineInS;
+    }
+
+    bool isUsbSource() const
+    {
+        return recorderConfig.source == sourceTypeUsbMix ||
+               recorderConfig.source == sourceTypeUsbStereo;
+    }
+
+    bool isStereoSource() const
+    {
+        return recorderConfig.source == sourceTypeLineInS ||
+               recorderConfig.source == sourceTypeUsbStereo;
+    }
 
     enum screenType
     {
@@ -288,9 +289,7 @@ class cSampleRecorder : public ModuleBase
 #endif
     };
     void setCurrentScreenType(screenType screenType);
-#ifdef PLATFORM_IMX
     void refreshOutputSource();
-#endif
     strFrameData frameData;
 
     //*********************************************
@@ -426,11 +425,7 @@ class cSampleRecorder : public ModuleBase
 
     bool isMonitorListVisible()
     {
-#ifdef PLATFORM_IMX
-        return recorderConfig.source != sourceTypeUsb;
-#else
-        return true;
-#endif
+        return !isUsbSource();
     }
 };
 

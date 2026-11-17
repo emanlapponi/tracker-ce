@@ -334,9 +334,7 @@ void cSampleRecorder::start(uint32_t options)
     showSourceList();
     activateAudioInputSource(recorderConfig.source);
     refreshGain();
-#ifdef PLATFORM_IMX
     refreshOutputSource();
-#endif
     // showZoomValue();
 
     points.selected = 0;
@@ -408,10 +406,8 @@ void cSampleRecorder::stop()
     {
         engine.forceLineInStreamVolume(LINE_IN_VOLUME_MIN);
     }
-#ifdef PLATFORM_IMX
     engine.refreshOutputSourceOutsideTheRecorder();
     engine.forceUsbGainOutsideTheRecorder();
-#endif
     radio->clearRDS();
     radio->setSeekCallback(nullptr);
     radio->enable(false);
@@ -542,10 +538,10 @@ void cSampleRecorder::handleStartupWithPopupAndMenu()
 
 void cSampleRecorder::refreshGain()
 {
-    if ((recorderConfig.source == sourceTypeLineIn) || (recorderConfig.source == sourceTypeRadio))
+    if (isLineInSource() || (recorderConfig.source == sourceTypeRadio))
     {
         uint8_t localMap = 0;
-        if (recorderConfig.source == sourceTypeLineIn)
+        if (isLineInSource())
         {
             localMap = recorderConfig.gainLineIn * 15 / 100;
         }
@@ -575,8 +571,7 @@ void cSampleRecorder::refreshGain()
         }
         codec->setMicGain(localMap);
     }
-#ifdef PLATFORM_IMX
-    else if (recorderConfig.source == sourceTypeUsb)
+    else if (isUsbSource())
     {
         float resultGain = mapClamped<float>(recorderConfig.gainUsb, 0, 100, 1.0f, 3.98f);
         engine.getAudioInput()
@@ -586,19 +581,16 @@ void cSampleRecorder::refreshGain()
           ->getUsbRecordingAmplifier(AudioInput::InputChannels::kRight)
           ->gain(resultGain);
     }
-#endif
 }
 
 void cSampleRecorder::refreshMonitorState()
 {
     engine.forceLineInStreamVolume(recorderConfig.monitor ? LINE_IN_VOLUME_MIN
                                                           : DEFAULT_LINE_IN_VOLUME);
-#ifdef PLATFORM_IMX
-    if (recorderConfig.source == sourceTypeUsb)
+    if (isUsbSource())
     {
         refreshGain();
     }
-#endif
 }
 
 void cSampleRecorder::processPoints()
@@ -657,12 +649,11 @@ void cSampleRecorder::noteOnHandle(uint8_t channel, uint8_t note, uint8_t veloci
           (channel == Sequencer::GRID_OUTSIDE_PATTERN) ? source : 100 + channel;
 
         std::vector<int16_t*> addresses;
-#ifdef PLATFORM_IMX
         addresses.push_back(recorder.getAddress(AudioInput::InputChannels::kLeft) + addressShift);
-        addresses.push_back(recorder.getAddress(AudioInput::InputChannels::kRight) + addressShift);
-#else
-        addresses.push_back(recorder.getAddress(AudioInput::InputChannels::kLeft) + addressShift);
-#endif
+        if (SR->isStereoSource())
+        {
+            addresses.push_back(recorder.getAddress(AudioInput::InputChannels::kRight) + addressShift);
+        }
         mtPadBoard.startNoteWithoutInstrument(
           note, addresses, length - addressShift, DEFAULT_INSTRUMENT_VOLUME, padboardSource);
     }
@@ -1554,36 +1545,28 @@ static void functActionRecord()
     config.destinationBufferAddress = externalRamSampleMemory;
     config.destinationBufferSize = SAMPLE_MEMORY_SIZE;
 
-#ifndef PLATFORM_IMX
-    config.destinationChannels = 1;
-    if (SR->recorderConfig.source == cSampleRecorder::sourceTypeMicHG ||
-        SR->recorderConfig.source == cSampleRecorder::sourceTypeMicLG)
-    {
-        config.sourceChannels = 1;
-    }
-    else
-    {
-        config.sourceChannels = 2;
-    }
-#else
-    if (SR->recorderConfig.source == cSampleRecorder::sourceTypeMicHG ||
-        SR->recorderConfig.source == cSampleRecorder::sourceTypeMicLG)
-    {
-        config.destinationChannels = 1;
-        config.sourceChannels = 1;
-    }
-    else
+    if (SR->isStereoSource())
     {
         config.destinationChannels = 2;
         config.sourceChannels = 2;
     }
-#endif
+    else if (SR->recorderConfig.source == cSampleRecorder::sourceTypeUsbMix ||
+             SR->recorderConfig.source == cSampleRecorder::sourceTypeLineInM)
+    {
+        config.destinationChannels = 1;
+        config.sourceChannels = 2;
+    }
+    else
+    {
+        config.destinationChannels = 1;
+        config.sourceChannels = 1;
+        config.useRightChannelForMono =
+          (SR->recorderConfig.source == cSampleRecorder::sourceTypeLineInR);
+    }
 
-#ifdef PLATFORM_IMX
-    config.source = SR->recorderConfig.source == cSampleRecorder::sourceTypeUsb
+    config.source = SR->isUsbSource()
                       ? Recorder::Config::Source::kUsb
                       : Recorder::Config::Source::kI2s;
-#endif
 
     recorder.setConfig(config);
     recorder.record();
@@ -1920,9 +1903,7 @@ static void functActionStopRec()
     if (SR->recordInProgressFlag == 1)
     {
         SR->recordInProgressFlag = 0;
-#ifdef PLATFORM_IMX
         SR->refreshOutputSource();
-#endif
         engine.clearDelay();
         engine.clearReverb();
 
@@ -2347,14 +2328,8 @@ void cSampleRecorder::calcRadioFreqBarVal()
 
 void cSampleRecorder::calcLevelBarVal()
 {
-#ifndef PLATFORM_IMX
-    AudioAnalyzeRMS* recordingRms[AudioInput::InputChannels::kChannelsCount] = {
-        engine.getAudioInput()->getRecordingRmsI2s(AudioInput::InputChannels::kLeft),
-        engine.getAudioInput()->getRecordingRmsI2s(AudioInput::InputChannels::kRight)
-    };
-#else
     AudioAnalyzeRMS* recordingRms[AudioInput::InputChannels::kChannelsCount];
-    if (recorderConfig.source == sourceTypeUsb)
+    if (isUsbSource())
     {
         recordingRms[0] =
           engine.getAudioInput()->getRecordingRmsUsb(AudioInput::InputChannels::kLeft);
@@ -2368,7 +2343,6 @@ void cSampleRecorder::calcLevelBarVal()
         recordingRms[1] =
           engine.getAudioInput()->getRecordingRmsI2s(AudioInput::InputChannels::kRight);
     }
-#endif
 
     if (recordingRms[AudioInput::InputChannels::kLeft]->available() &&
         recordingRms[AudioInput::InputChannels::kRight]->available())
@@ -2409,7 +2383,7 @@ void cSampleRecorder::calcLevelBarVal()
 }
 void cSampleRecorder::calcGainBarVal()
 {
-    if (recorderConfig.source == sourceTypeLineIn)
+    if (isLineInSource())
     {
         gainBarVal = recorderConfig.gainLineIn;
     }
@@ -2425,12 +2399,10 @@ void cSampleRecorder::calcGainBarVal()
     {
         gainBarVal = recorderConfig.gainMicHigh;
     }
-#ifdef PLATFORM_IMX
-    else if (recorderConfig.source == sourceTypeUsb)
+    else if (isUsbSource())
     {
         gainBarVal = recorderConfig.gainUsb;
     }
-#endif
 }
 
 void cSampleRecorder::changeRadioFreqBar(int16_t val)
@@ -2471,7 +2443,7 @@ void cSampleRecorder::changeLevelBar()
 }
 void cSampleRecorder::changeGainBar(int16_t val)
 {
-    if (recorderConfig.source == sourceTypeLineIn)
+    if (isLineInSource())
     {
         recorderConfig.gainLineIn = clamp<int>(recorderConfig.gainLineIn + val, 0, 100);
         refreshGain();
@@ -2496,14 +2468,12 @@ void cSampleRecorder::changeGainBar(int16_t val)
         refreshGain();
         mtProject.values.gainMicHigh = sampleRecorder.recorderConfig.gainMicHigh;
     }
-#ifdef PLATFORM_IMX
-    else if (recorderConfig.source == sourceTypeUsb)
+    else if (isUsbSource())
     {
         recorderConfig.gainUsb = clamp<int>(recorderConfig.gainUsb + val, 0, 100);
         refreshGain();
         mtProject.values.recorderGainUsb = sampleRecorder.recorderConfig.gainUsb;
     }
-#endif
 
     calcGainBarVal();
     drawGainBar();
@@ -2514,7 +2484,7 @@ void cSampleRecorder::changeGainBar(int16_t val)
 
 void cSampleRecorder::setDefaultSource()
 {
-    recorderConfig.source = sourceTypeLineIn;
+    recorderConfig.source = sourceTypeLineInS;
     activateAudioInputSource(recorderConfig.source);
 
     display.setControlValue(sourceListControl, recorderConfig.source);
@@ -2533,7 +2503,7 @@ void cSampleRecorder::setDefaultSource()
 
 void cSampleRecorder::setDefaultGain()
 {
-    if (recorderConfig.source == sourceTypeLineIn)
+    if (isLineInSource())
     {
         recorderConfig.gainLineIn = defaultRecorderConfig.gainLineIn;
         refreshGain();
@@ -2684,18 +2654,17 @@ void cSampleRecorder::changeSourceSelection(int16_t value, bool rollListOver)
 
 void cSampleRecorder::activateAudioInputSource(uint8_t source)
 {
-#ifdef PLATFORM_IMX
-    if (currentScreen == screenTypeConfig && source != sourceTypeUsb)
-#else
-    if (currentScreen == screenTypeConfig)
-#endif
+    if (currentScreen == screenTypeConfig && !isUsbSource())
     {
         refreshMonitorState();
     }
 
     switch (source)
     {
-        case sourceTypeLineIn:
+        case sourceTypeLineInL:
+        case sourceTypeLineInR:
+        case sourceTypeLineInM:
+        case sourceTypeLineInS:
         {
 #ifdef TRACKER_MINI
             // digitalWrite(SI4703_KLUCZ,HIGH);  // no more radio
@@ -2739,14 +2708,11 @@ void cSampleRecorder::activateAudioInputSource(uint8_t source)
             changeSourceToMicFlag = 1;
             break;
         }
-#ifdef PLATFORM_IMX
-        case sourceTypeUsb: hideRadio(); break;
-#endif
+        case sourceTypeUsbMix:
+        case sourceTypeUsbStereo: hideRadio(); break;
         default: break;
     }
-#ifdef PLATFORM_IMX
     refreshOutputSource();
-#endif
 
     refreshGain();
 }

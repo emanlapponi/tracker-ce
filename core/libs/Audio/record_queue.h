@@ -45,6 +45,8 @@ class AudioRecordQueue : public AudioStream
     {
         clear();
         enabled = 1;
+        __asm__ volatile("" ::: "memory");
+        active = numConnections > 0;
     }
     int available(void);
     void clear(void);
@@ -54,6 +56,12 @@ class AudioRecordQueue : public AudioStream
     virtual void update(void);
 
   private:
+    void sleepIfIdle(void)
+    {
+        if (!hasLaterSource)
+            active = false;
+    }
+
     audio_block_t* inputQueueArray[1];
     audio_block_t* volatile queue[QUEUE_SIZE];
     audio_block_t* userblock;

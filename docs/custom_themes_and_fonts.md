@@ -104,9 +104,8 @@ A common question is whether loading custom themes affects available audio sampl
   * Theme manager buffers reside strictly outside the audio buffers in external SDRAM.
 * **Critical Fast SRAM (DTCM / ITCM): 0 Bytes used**
   * On-chip tightly-coupled memory is used strictly for low-latency DSP and audio rendering. The theme manager uses none of it.
-* **SDRAM Footprint: ~17 KB total (~0.025% of 64 MB)**
-  * The theme indexing structures, filename strings, pointers, and the 8 KB file read buffer occupy a fixed static footprint of ~17 KB in external RAM.
-  * Memory is allocated statically at compile time (`__NOINIT(EXTERNAL_RAM)`), meaning **zero dynamic heap allocation (`malloc`/`new`)** occurs during theme loading. This guarantees zero heap fragmentation.
+* **SDRAM Footprint (No Dynamic Heap Allocation):**
+  * Theme indexing structures, filename strings, pointers, and the theme read buffer live statically in `__NOINIT(EXTERNAL_RAM)` (see [`docs/memory_map.md`](memory_map.md#5-subsystem--asset-capacity-reference) for exact sizes), meaning **zero dynamic heap allocation (`malloc`/`new`)** occurs during theme loading and zero heap fragmentation is possible.
 * **CPU / DSP Impact: None during playback**
   * Themes are parsed and loaded only when selected in the Config menu or upon device boot. During playback and editing, widgets draw using directly cached integer color arrays with zero parsing overhead.
 

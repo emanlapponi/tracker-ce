@@ -92,7 +92,7 @@ inline void saturateSoftClip(std::span<sample_t> buf, float gainDb)
     for (auto& element : buf)
     {
         float sample = std::clamp(element * gainRaw, -1.5f, 1.5f);
-        sample = sample - (sample * sample * sample) / 6.72f;
+        sample = sample - (sample * sample * sample) * (1.0f / 6.72f);
         element = std::clamp(sample, -1.0f, 1.0f);
     }
 }

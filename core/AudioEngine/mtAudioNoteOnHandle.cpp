@@ -25,6 +25,8 @@ uint8_t playerEngine ::noteOn(uint8_t instr_idx, int8_t note, int8_t _velocity)
     currentInstrument_idx = instr_idx;
     currentNote = note;
     stepVelocity = _velocity;
+    voiceIsStereo = mtProject.sampleMemory[instr_idx].isStereo;
+    audioVoice.setStereo(voiceIsStereo);
 
     handleInitNoteOnAllEnvelopes(); // kill + init
 
@@ -46,10 +48,16 @@ uint8_t playerEngine ::noteOn(uint8_t instr_idx, int8_t note, int8_t _velocity)
 
     bool isAmpRandom = (mtProject.instrument[instr_idx].envelope[envAmp].loop == 1) &&
                        (mtProject.instrument[instr_idx].lfo[envAmp].shape == lfoShapeRandom);
-    for (int channel = 0; channel < (int)playMemPtr.size(); channel++)
+    playMemPtr[0]->envelopeSetIsRandom(isAmpRandom);
+    playMemPtr[0]->envelopeNoteOn(instr_idx, note);
+    if (voiceIsStereo)
     {
-        playMemPtr[channel]->envelopeSetIsRandom(isAmpRandom);
-        playMemPtr[channel]->envelopeNoteOn(instr_idx, note);
+        playMemPtr[1]->envelopeSetIsRandom(isAmpRandom);
+        playMemPtr[1]->envelopeNoteOn(instr_idx, note);
+    }
+    else
+    {
+        playMemPtr[1]->stop();
     }
 
     for (uint8_t i = envPan; i < ACTIVE_ENVELOPES; i++)
@@ -92,6 +100,8 @@ AUDIO_CORE_RAM uint8_t playerEngine ::noteOn(uint8_t instr_idx,
     currentInstrument_idx = instr_idx;
     currentNote = note;
     stepVelocity = velocity;
+    voiceIsStereo = mtProject.sampleMemory[instr_idx].isStereo;
+    audioVoice.setStereo(voiceIsStereo);
 
     handleInitFxNoteOnAllEnvelopes();
 
@@ -132,21 +142,6 @@ AUDIO_CORE_RAM uint8_t playerEngine ::noteOn(uint8_t instr_idx,
         changeTunePerformanceMode(performanceMod.tune);
     }
     //******** seqFx
-    if (velocity >= 0)
-    {
-        if (isFxVelocity(fx1_id))
-        {
-            fx1_id = Sequencer::strFxConsts::FX_TYPE_VOLUME;
-            fx1_val = velocity;
-        }
-
-        if (isFxVelocity(fx2_id))
-        {
-            fx2_id = Sequencer::strFxConsts::FX_TYPE_VOLUME;
-            fx2_val = velocity;
-        }
-    }
-
     seqFx(fx2_id, fx2_val, 1); // mniej wazny najpierw
     seqFx(fx1_id, fx1_val, 0);
 
@@ -183,11 +178,18 @@ AUDIO_CORE_RAM uint8_t playerEngine ::noteOn(uint8_t instr_idx,
     bool isAmpRandom = (mtProject.instrument[instr_idx].envelope[envAmp].loop == 1) &&
                        (mtProject.instrument[instr_idx].lfo[envAmp].shape == lfoShapeRandom);
 
-    for (int channel = 0; channel < playMemPtr.size(); channel++)
+    playMemPtr[0]->envelopeSetIsRandom(isAmpRandom);
+    playMemPtr[0]->envelopeNoteOn(instr_idx,
+                                        note); // zawsze odpalamy nawet jak nie aktywny
+    if (voiceIsStereo)
     {
-        playMemPtr[channel]->envelopeSetIsRandom(isAmpRandom);
-        playMemPtr[channel]->envelopeNoteOn(instr_idx,
+        playMemPtr[1]->envelopeSetIsRandom(isAmpRandom);
+        playMemPtr[1]->envelopeNoteOn(instr_idx,
                                             note); // zawsze odpalamy nawet jak nie aktywny
+    }
+    else
+    {
+        playMemPtr[1]->stop();
     }
 
     for (uint8_t i = envPan; i < ACTIVE_ENVELOPES; i++)
@@ -463,14 +465,8 @@ AUDIO_CORE_RAM void playerEngine::handleNoteOnPanning()
     assert(playMemPtr[0] != nullptr);
     if (!playMemPtr[0]->isPlaying()) // todo: see handleNoteOnGain() description
     {
-#ifndef PLATFORM_IMX
-        monoToStereoPtr->gain(1.0f, MonoToStereo::Channel::left);
-        monoToStereoPtr->gain(1.0f, MonoToStereo::Channel::left);
-        monoToStereoPtr->gain(1.0f, MonoToStereo::Channel::right);
-        monoToStereoPtr->gain(1.0f, MonoToStereo::Channel::right);
-#else
-        engine.updateTrackDirectGain(nChannel);
-#endif
+        engine.getMixerAndFx()->getTracksMixer(MixerAndFxChannelType::kLeft)->gain(nChannel, 1.0f);
+        engine.getMixerAndFx()->getTracksMixer(MixerAndFxChannelType::kRight)->gain(nChannel, 1.0f);
     }
 
     setRefreshBit(PANNING_MASK);
@@ -488,11 +484,9 @@ AUDIO_CORE_RAM void playerEngine::handleNoteOnDelaySend()
     {
         preDelayMixer->gain(nChannel, 0.0f);
         preDelayMixer->gain(nChannel, 0.0f);
-#ifdef PLATFORM_IMX
         static constexpr int kInputsChannels = 2;
         preDelayMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, 0.0f);
         preDelayMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, 0.0f);
-#endif
     }
     setRefreshBit(DELAY_SEND_MASK);
 }
@@ -504,11 +498,9 @@ AUDIO_CORE_RAM void playerEngine::handleNoteOnReverbSend()
     {
         prePolyverbMixer->gain(nChannel, 0.0f);
         prePolyverbMixer->gain(nChannel, 0.0f);
-#ifdef PLATFORM_IMX
         static constexpr int kInputsChannels = 2;
         prePolyverbMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, 0.0f);
         prePolyverbMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, 0.0f);
-#endif
     }
 
     setRefreshBit(REVERB_SEND_MASK);

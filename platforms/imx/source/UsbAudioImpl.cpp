@@ -15,3 +15,8 @@ void UsbAudioImpl::finishFillData()
 {
     finishUsbAudioFill();
 }
+
+bool UsbAudioImpl::isOutputActive() const
+{
+    return isUsbAudioOutputActive();
+}

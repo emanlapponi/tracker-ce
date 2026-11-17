@@ -96,12 +96,6 @@ const char* const brightness[3] = {
     "High",
 };
 
-const char* const lineInOutType[3] = {
-    "Stereo",
-    "Mono Left",
-    "Mono Right",
-};
-
 const char* const themeChoices[3] = {
     "Original",
     "Monochrome",
@@ -236,8 +230,13 @@ const char* const slaveClockComp[kExternalClockCompMaxVal + 1] = {
 const char* const kUsbAudioList[4] = {
     "Off",
     "Input (2 in)",
+#ifdef PLATFORM_IMX
     "Output (28 out)",
     "In/Out (2 in, 28 out)",
+#else
+    "Output (2 out)",
+    "In/Out (2 in, 2 out)",
+#endif
 };
 //############################################################################################
 //						OPISY PARAMETROW MENU CONFIG
@@ -329,17 +328,6 @@ const char hexModeDesc[] = { "Enable the throwback hex goodness: pattern step nu
 const char patternArraDesc[] = { "Pattern arrangement type" };
 
 const char patternInfo[] = { "Pattern info" };
-
-const char lineInChannelDesc[] = {
-#ifdef PLATFORM_IMX
-    "Sets physical Line Input channel configuration for Global Mixer and Sample Recorder: "
-    "monitoring and recording can be in Stereo or use the selected Left / Right channel."
-#else
-    "Sets physical Line Input channel configuration for Global Mixer and Sample Recorder: only "
-    "monitoring can be Stereo but recording will sum to mono. Mono settings use the selected Left "
-    "/ Right channel for both monitoring and recording."
-#endif
-};
 
 const char usbAudioDesc[] = {
     "Enables audio over USB. For best results connect the device directly to your computer USB "

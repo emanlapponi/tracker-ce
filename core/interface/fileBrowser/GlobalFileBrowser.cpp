@@ -5,6 +5,7 @@
 #include "ampLogarythmicValues.h"
 #include "config.h"
 #include "core/interface.h"
+#include "core/interfaceMenuPopup.h"
 #include "core/interfacePopups.h"
 #include "core/songTimer.h"
 #include "core/titleBar.h"
@@ -22,11 +23,15 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cr_section_macros.h>
 #include <cstring>
 
 extern uint8_t externalRamScratchBuff[];
 
 cGlobalFileBrowser globalFileBrowser;
+
+__NOINIT(EXTERNAL_RAM) static char s_displayLabelsBuffer[kMaxFilesListLength][32];
+__NOINIT(EXTERNAL_RAM) static char* s_displayListPtrs[kMaxFilesListLength];
 
 static const uint16_t s_gfbFramesPlaces[3][4] = {
     { 0 + 1, 31, (800 / 8) * 3 - 3, 391 },
@@ -409,6 +414,35 @@ static void gfbBtn5(uint8_t state) { gfbScreenButton(interfaceButton5, state); }
 static void gfbBtn6(uint8_t state) { gfbScreenButton(interfaceButton6, state); }
 static void gfbBtn7(uint8_t state) { gfbScreenButton(interfaceButton7, state); }
 
+static void gfbSwitchModule(uint8_t button)
+{
+    globalFileBrowser.keyboardPurpose = cGlobalFileBrowser::KeyboardPurpose::kNone;
+    globalFileBrowser.dialogState = cGlobalFileBrowser::DialogState::kBrowse;
+    if (globalFileBrowser.keyboardManager.getState())
+    {
+        globalFileBrowser.keyboardManager.deactivateKeyboard();
+    }
+    mtPopups.hideInfoPopup();
+
+    globalFileBrowser.cancelBrowser();
+    if (globalFileBrowser.ip != nullptr)
+    {
+        globalFileBrowser.ip->processButtonsInput(button, buttonPress);
+    }
+}
+
+static void gfbMenu(uint8_t state)
+{
+    if (state == buttonPress)
+    {
+        mtMenuPopup.showModulePopup(&globalFileBrowser, gfbSwitchModule);
+    }
+    else if (state == buttonRelease)
+    {
+        mtMenuPopup.hideModulePopup(&globalFileBrowser);
+    }
+}
+
 void cGlobalFileBrowser::configure(const GlobalFileBrowserConfig& cfg)
 {
     config = cfg;
@@ -773,6 +807,7 @@ void cGlobalFileBrowser::start(uint32_t options)
     if (fs != nullptr)
     {
         fileBrowser.start(fs, &fileBrowserData);
+        rebuildExplorerDisplayLabels();
         if (restoredPos >= 0 && restoredPos < fileBrowserData.browserListLength)
         {
             fileBrowserData.browserListPosition = restoredPos;
@@ -789,12 +824,15 @@ void cGlobalFileBrowser::start(uint32_t options)
             for (int i = 0; i < fileBrowserData.browserListLength; ++i)
             {
                 const char* item = fileBrowserData.browserList[i];
+                const char* dispItem = config.onFormatItemLabel ? s_displayListPtrs[i] : nullptr;
                 if (item == nullptr || item[0] == '/')
                 {
                     continue;
                 }
                 if (strcasecmp(item, config.initialSelectedName.c_str()) == 0 ||
-                    (!primaryExt.empty() && strcasecmp(item, withExt.c_str()) == 0))
+                    (!primaryExt.empty() && strcasecmp(item, withExt.c_str()) == 0) ||
+                    (dispItem != nullptr &&
+                     strcasecmp(dispItem, config.initialSelectedName.c_str()) == 0))
                 {
                     fileBrowserData.browserListPosition = i;
                     break;
@@ -948,6 +986,76 @@ void cGlobalFileBrowser::notifyHighlightChanged()
     }
 }
 
+void cGlobalFileBrowser::rebuildExplorerDisplayLabels()
+{
+    if (!config.onFormatItemLabel)
+    {
+        return;
+    }
+
+    int count = std::min<int>(fileBrowserData.browserListLength, kMaxFilesListLength);
+    int firstFileIdx = count;
+
+    for (int i = 0; i < count; ++i)
+    {
+        if (!fileBrowser.isRoot() && i == 0)
+        {
+            s_displayListPtrs[i] = fileBrowserData.browserList[i];
+            continue;
+        }
+
+        bool folder = fileBrowser.isFolder(i);
+        if (!folder && firstFileIdx == count)
+        {
+            firstFileIdx = i;
+        }
+        bool pkg = isPackageMode() && folder &&
+                   (fileBrowserData.selectionList != nullptr &&
+                    fileBrowserData.selectionList[i] != 0);
+
+        const char* rawItem = fileBrowserData.browserList[i];
+        const char* cleanName =
+          (rawItem != nullptr && rawItem[0] == '/') ? (rawItem + 1) : (rawItem ? rawItem : "");
+
+        std::string itemFullPath =
+          fileBrowser.isRoot()
+            ? (std::string("/") + cleanName)
+            : (std::string("/") + fileBrowser.getCurrentPath() + "/" + cleanName);
+
+        std::string customLabel =
+          config.onFormatItemLabel(itemFullPath, cleanName, folder, pkg);
+        if (!customLabel.empty())
+        {
+            polystrncpy(
+              s_displayLabelsBuffer[i], customLabel.c_str(), sizeof(s_displayLabelsBuffer[i]));
+            s_displayListPtrs[i] = s_displayLabelsBuffer[i];
+        }
+        else
+        {
+            s_displayListPtrs[i] = fileBrowserData.browserList[i];
+        }
+    }
+
+    // Sort file entries alphabetically by their formatted display label, keeping browserList in sync
+    for (int i = firstFileIdx; i + 1 < count; ++i)
+    {
+        for (int j = i + 1; j < count; ++j)
+        {
+            const char* labelA = s_displayListPtrs[i] ? s_displayListPtrs[i] : "";
+            const char* labelB = s_displayListPtrs[j] ? s_displayListPtrs[j] : "";
+            if (strcasecmp(labelA, labelB) > 0)
+            {
+                std::swap(fileBrowserData.browserList[i], fileBrowserData.browserList[j]);
+                std::swap(s_displayListPtrs[i], s_displayListPtrs[j]);
+                if (fileBrowserData.selectionList != nullptr)
+                {
+                    std::swap(fileBrowserData.selectionList[i], fileBrowserData.selectionList[j]);
+                }
+            }
+        }
+    }
+}
+
 void cGlobalFileBrowser::updateInspectorLabels()
 {
     for (int i = 0; i < 4; ++i)
@@ -974,7 +1082,14 @@ void cGlobalFileBrowser::updateInspectorLabels()
 
     const char* rawName =
       folder ? fileBrowser.getSelectedFolderName() : fileBrowser.getSelectedItemName();
-    polystrncpy(inspectorText[0], rawName ? rawName : "", sizeof(inspectorText[0]));
+    const char* titleName = rawName;
+    if (!folder && config.onFormatItemLabel && fileBrowserData.browserListPosition >= 0 &&
+        fileBrowserData.browserListPosition < fileBrowserData.browserListLength &&
+        s_displayListPtrs[fileBrowserData.browserListPosition] != nullptr)
+    {
+        titleName = s_displayListPtrs[fileBrowserData.browserListPosition];
+    }
+    polystrncpy(inspectorText[0], titleName ? titleName : "", sizeof(inspectorText[0]));
 
     if (config.onDescribeItem && !fullPath.empty())
     {
@@ -1127,7 +1242,8 @@ void cGlobalFileBrowser::refreshBrowserScreen()
     display.setControlColors(explorerLabelControl, explorerHeaderColors);
     display.setControlText(explorerLabelControl, explorerPathText);
 
-    explorerList.data = fileBrowserData.browserList;
+    explorerList.data =
+      config.onFormatItemLabel ? s_displayListPtrs : fileBrowserData.browserList;
     explorerList.length = fileBrowserData.browserListLength;
     explorerList.start = fileBrowserData.browserListPosition;
     explorerList.selectionActive = isPackageMode() ? 1 : 0;
@@ -1344,6 +1460,20 @@ void cGlobalFileBrowser::setMainFunctions()
     ip->setButtonObj(interfaceButton6, gfbBtn6);
     ip->setButtonObj(interfaceButton7, gfbBtn7);
 
+    ip->setButtonObj(interfaceButtonParams, buttonPress, gfbSwitchModule);
+    ip->setButtonObj(interfaceButtonPerformance, buttonPress, gfbSwitchModule);
+    ip->setButtonObj(interfaceButtonFile, buttonPress, gfbSwitchModule);
+    ip->setButtonObj(interfaceButtonConfig, buttonPress, gfbSwitchModule);
+    ip->setButtonObj(interfaceButtonMaster, buttonPress, gfbSwitchModule);
+    ip->setButtonObj(interfaceButtonSamplePlay, buttonPress, gfbSwitchModule);
+    ip->setButtonObj(interfaceButtonSampleEdit, buttonPress, gfbSwitchModule);
+    ip->setButtonObj(interfaceButtonSampleRec, buttonPress, gfbSwitchModule);
+    ip->setButtonObj(interfaceButtonSampleLoad, buttonPress, gfbSwitchModule);
+    ip->setButtonObj(interfaceButtonSong, buttonPress, gfbSwitchModule);
+    ip->setButtonObj(interfaceButtonPattern, buttonPress, gfbSwitchModule);
+    ip->setButtonObj(interfaceButtonGame, buttonPress, gfbSwitchModule);
+    ip->setButtonObj(interfaceButtonMiniMenu, gfbMenu);
+
     ip->setPadsGlobal(gfbPadChange);
 }
 
@@ -1478,6 +1608,7 @@ void cGlobalFileBrowser::handleEnterOrInsert()
     {
         stopFilePreview();
         fileBrowser.browse();
+        rebuildExplorerDisplayLabels();
         saveCurrentContext();
         notifyHighlightChanged();
         refreshBrowserScreen();
@@ -1805,6 +1936,7 @@ void cGlobalFileBrowser::confirmKeyboard()
         else
         {
             fileBrowser.refresh();
+            rebuildExplorerDisplayLabels();
             fileBrowser.selectSpecificFolderName(enteredName);
             saveCurrentContext();
             notifyHighlightChanged();
@@ -1974,6 +2106,7 @@ void cGlobalFileBrowser::confirmDialogAction()
         {
             int prevPos = fileBrowserData.browserListPosition;
             fileBrowser.refresh();
+            rebuildExplorerDisplayLabels();
             if (fileBrowserData.browserListLength > 0)
             {
                 fileBrowserData.browserListPosition =

@@ -152,6 +152,7 @@ extern "C"
     void beginUsbAudioFill();
     void finishUsbAudioFill();
     void fillUsbAudioChannelData(void* data, int count, int channel);
+    bool isUsbAudioOutputActive();
 #ifdef __cplusplus
 }
 #endif

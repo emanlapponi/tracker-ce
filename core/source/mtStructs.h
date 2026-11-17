@@ -76,13 +76,13 @@ const uint32_t DELAY_MEMORY_SIZE = (3 * 512 * 1024);               // 1,5 MB
 const uint32_t REVERB_MEMORY_SIZE = 32768;                         // 32 KB
 const uint32_t SHARED_SCRATCH_MEMORY_SIZE = 768 * 1024; // 768 KB shared external scratch (.scratch_memory)
 
-const uint32_t EDIT_BUFF_SIZE = (15 * 256 * 1024); // 3,75 MB
-
 #ifdef PLATFORM_IMX
-constexpr int SAMPLE_CHANNELS = 2;
+const uint32_t EDIT_BUFF_SIZE = (15 * 256 * 1024); // 3,75 MB
 #else
-constexpr int SAMPLE_CHANNELS = 1;
+const uint32_t EDIT_BUFF_SIZE = (15 * 128 * 1024); // 1,875 MB (~22.3s stereo on MK66)
 #endif
+
+constexpr int SAMPLE_CHANNELS = 2;
 
 const uint32_t EDIT_BUFF_OFFSET = SAMPLE_MEMORY_SIZE - (2 * SAMPLE_CHANNELS * EDIT_BUFF_SIZE);
 

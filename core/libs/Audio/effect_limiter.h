@@ -28,6 +28,11 @@ class AudioEffectLimiter : public AudioStream
     void unblockUpdate();
 
   private:
+#ifdef AUDIO_NULL_IS_SILENCE
+    bool isSteadyOnSilence(bool sidechain) const;
+    // the last block was silent input and left the whole state (gain, peak detector, delay lines) as it found it
+    volatile bool relaxed = false;
+#endif
     audio_block_t* inputQueueArray[2];
     int16_t inputStorageBuffer[LIMITER_DELAY];
     int16_t outputStorageBuffer[LIMITER_DELAY];

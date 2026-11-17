@@ -2,11 +2,7 @@
 
 Build standalone relocatable SD-card synthesizer engines (`/Synths/<NAME>.psyn`) that run across all synth-capable Polyend Community Edition devices without recompiling firmware:
 
-- **Polyend Synth (`Wave`)**
-- **Polyend Play+ & Original Polyend Play (`IMX`)**
-- **Polyend Tracker+ & Polyend Tracker Mini (`IMX`)**
-
-All `.psyn` binaries target **ARMv7E-M (`Cortex-M7`), Thumb-2, VFPv5 hard-float** (`-mcpu=cortex-m7 -mthumb -mfloat-abi=hard -mfpu=fpv5-sp-d16 -mword-relocations`) and execute directly from an external SDRAM plugin arena (`1,920 KB` `PsynLoader::kArenaSize` with automatic LRU eviction of inactive engines).
+All `.psyn` binaries target **ARMv7E-M (`Cortex-M7`), Thumb-2, VFPv5 hard-float** (`-mcpu=cortex-m7 -mthumb -mfloat-abi=hard -mfpu=fpv5-sp-d16 -mword-relocations`) and execute directly from the external SDRAM plugin arena ([`PsynLoader::kArenaSize`](../docs/memory_map.md#4-synthesizer-sdram-pool-psyn_ram_pool_size--imx) with automatic LRU eviction of inactive engines).
 
 ---
 
@@ -67,11 +63,15 @@ python3 tools/psyn_builder.py \
     --max-voices 8 \
     --output-channels 2 \
     --renders-aux 0 \
-    --has-sample-slots 0
+    --has-sample-slots 0 \
+    --supports-idle-sleep 1 \
+    --has-voice-tick-idle 0
 ```
 
 * Pass `--type-id-wave 0` and `--type-id-play-tracker 0` for community engines so the firmware assigns a deterministic runtime ID (`0x100+` from `PsynLoader`) that never collides with factory synth IDs.
 * Pass `--has-sample-slots 1` whenever the engine declares sample or wavetable slots (`PSYN_FLAG_HAS_SAMPLE_SLOTS = 0x0001` in `PsynHeader::flags`).
+* Pass `--supports-idle-sleep 1` (`PSYN_FLAG_SUPPORTS_IDLE_SLEEP = 0x0002`) when your voice accurately reports `isActive() == false` once silent; this enables zero-CPU idle sleep and adds the per-patch `Voice Sleep` (`On` / `Off`, default `On`) switch to the `Voice` layout.
+* Pass `--has-voice-tick-idle 1` (`PSYN_FLAG_HAS_VOICE_TICK_IDLE = 0x0004`) if your voice also implements `InstrumentVoice::tickIdle()` / `voice_tick_idle()` to advance free-running oscillator/LFO/modulation state lightly while `Voice Sleep` is `Off` and `!isActive()`.
 
 ---
 
@@ -86,7 +86,7 @@ Copy the compiled `.psyn` file and any patches/samples onto your microSD card:
   * **Polyend Synth**: Uses `/Samples/<CODE_NAME>/`.
 
 ### Sample Slots & Direct SD/WAV I/O
-* **Sample Slots (`SamplePool` shared across active engines, `4 MB`)**:
+* **Sample Slots (shared [`SamplePool`](../docs/memory_map.md#4-synthesizer-sdram-pool-psyn_ram_pool_size--imx) across active engines)**:
   * *C++20*: Add entries to `metadata.sampleSlots` (`displayName`, `defaultSamplePath`, `type` Sample/WaveTable, `section`, `subsection`) and include `SampleSlot` layout elements; read PCM inside the voice via `patch->getSample(slotId)` (`const polysynth::Sample*`).
   * *Pure C*: Register slots with `host->meta_add_sample_slot(meta_builder, &desc)` + `PsynLayoutElement{.type = 2, .id = slot_id}` and inspect via `host->patch_get_sample(host_patch, slot_id, &sample_data)`.
   * On hardware, Tracker opens [`GlobalFileBrowser`](../docs/global_file_browser.md) (`kLoadWav`, with audio preview and `Left`-arrow jump-to-top) whenever the user picks a file for a sample slot.

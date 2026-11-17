@@ -32,9 +32,9 @@ class cMenuGroup : public cMenuBase
       : cMenuBase(menuTypeGroup)
       , parentMenu(&parent)
       , childsCount(childs_count)
-      , childs(new hMenuItem[childs_count])
-      , childsNames(new char*[childs_count])
-      , childsValues(new char*[childs_count])
+      , childs(new hMenuItem[childs_count]{})
+      , childsNames(new char*[childs_count]{})
+      , childsValues(new char*[childs_count]{})
       , groupName(name)
     {
         slot = parent.getNextSlotNumber();

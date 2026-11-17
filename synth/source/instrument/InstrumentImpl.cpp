@@ -75,6 +75,8 @@ bool InstrumentImpl::recreateVoices(int voiceCount)
     {
         voices.clear();
         voicesInstrumentTypeId = patchAssigned->getMetadata().instrumentTypeId;
+        postProcessTailing = false;
+        silentPostBlocks = 0;
     }
 
     auto delta = voiceCount - std::ssize(voices);
@@ -102,6 +104,11 @@ bool InstrumentImpl::recreateVoices(int voiceCount)
     if (delta < 0)
     {
         this->voices.resize(voiceCount);
+        if (voiceCount == 0)
+        {
+            postProcessTailing = false;
+            silentPostBlocks = 0;
+        }
         return true;
     }
 
@@ -149,6 +156,9 @@ void InstrumentImpl::onPatchReset()
         voice.noteSourceIds.clear();
         voice.ticksSinceNoteOn = 0;
     }
+    postProcessTailing = false;
+    silentPostBlocks = 0;
+    voiceSleepEnabled = true;
 }
 
 void InstrumentImpl::reset()
@@ -170,6 +180,12 @@ void InstrumentImpl::assignPatch(std::shared_ptr<Patch> patch)
     patch->subscribeParamUpdates(shared_from_this());
 
     patchAssigned = std::move(patch);
+
+    const auto& meta = patchAssigned->getMetadata();
+    supportsIdleSleep = meta.supportsIdleSleep;
+    voiceSleepParamId = meta.voiceSleepParamId;
+    voiceSleepEnabled =
+      (voiceSleepParamId >= 0) ? (patchAssigned->getParamValue(voiceSleepParamId).value_or(1.0f) != 0.0f) : true;
 
     auto voicesRecreated = recreateVoices(static_cast<int>(std::ssize(voices)));
 
@@ -366,6 +382,12 @@ void InstrumentImpl::onParamChange(int paramId,
                                    Patch::ParamChangeSource source,
                                    tiny_optional<int> voiceId)
 {
+    if (voiceSleepParamId >= 0 && paramId == voiceSleepParamId)
+    {
+        voiceSleepEnabled = (newValue.value_or(1.0f) != 0.0f);
+        return;
+    }
+
     if (voiceId)
     {
         assert(voiceId < std::ssize(voices));
@@ -531,6 +553,11 @@ void InstrumentImpl::handleNoteOn(const MidiEvent& event, int sourceId)
     }
 
     voice.voice->onMidiEvent({ getTempo() }, event);
+    if (!voices.empty() && voices[0].voice->hasPostProcess())
+    {
+        postProcessTailing = true;
+        silentPostBlocks = 0;
+    }
 
     auto& noteSourceIds = voice.noteSourceIds;
     if (noteSourceIds.size() == decltype(voice.noteSourceIds)::capacity())
@@ -579,16 +606,40 @@ void InstrumentImpl::renderAudioBuffer(std::optional<AudioBufferStereoRef> input
         std::ranges::fill(auxBuf, 0.0f);
     }
 
-    if (voices.size() == 1)
-    {
-        voices[0].voice->renderVoiceAudio(ctx, inputBuffer, outputBuffer, auxOutBuffer);
-    }
-    else
+    if (voices.empty())
     {
         std::ranges::fill(outputBuffer.at(0), 0.0f);
         std::ranges::fill(outputBuffer.at(1), 0.0f);
+        postProcessTailing = false;
+        silentPostBlocks = 0;
+        return;
+    }
 
-        for (auto& voice : voices)
+    const bool sleepAllowed = shouldSleepWhenIdle();
+    bool anyActive = false;
+    bool anyRendered = false;
+    for (auto& voice : voices)
+    {
+        if (voice.voice->isActive())
+        {
+            anyActive = true;
+        }
+        else if (sleepAllowed)
+        {
+            continue;
+        }
+        else if (voice.voice->hasTickIdle())
+        {
+            voice.voice->tickIdle(ctx);
+            continue;
+        }
+
+        if (!anyRendered)
+        {
+            anyRendered = true;
+            voice.voice->renderVoiceAudio(ctx, inputBuffer, outputBuffer, auxOutBuffer);
+        }
+        else
         {
             voice.voice->renderVoiceAudio(
               ctx,
@@ -603,14 +654,101 @@ void InstrumentImpl::renderAudioBuffer(std::optional<AudioBufferStereoRef> input
                 for (auto& value : pair.first)
                 {
                     value += *it++; // NOLINT(*-pro-bounds-pointer-arithmetic)
-                };
+                }
             }
-        };
+        }
     }
-    if (!voices.empty())
+
+    if (!anyRendered)
+    {
+        std::ranges::fill(outputBuffer.at(0), 0.0f);
+        std::ranges::fill(outputBuffer.at(1), 0.0f);
+    }
+
+    const bool hasPP = voices[0].voice->hasPostProcess();
+    const bool runFullLegacyPostProcess =
+      hasPP && !sleepAllowed && !voices[0].voice->hasTickIdle();
+    if (anyActive)
+    {
+        voices[0].voice->renderPostProcessAudio(ctx, outputBuffer);
+        postProcessTailing = hasPP;
+        silentPostBlocks = 0;
+    }
+    else if (runFullLegacyPostProcess)
     {
         voices[0].voice->renderPostProcessAudio(ctx, outputBuffer);
     }
+    else if (postProcessTailing && hasPP)
+    {
+        voices[0].voice->renderPostProcessAudio(ctx, outputBuffer);
+        bool quiet = true;
+        for (const auto& ch : { outputBuffer.at(0), outputBuffer.at(1) })
+        {
+            for (const sample_t s : ch)
+            {
+                if (std::abs(s) >= kPostProcessQuietThreshold)
+                {
+                    quiet = false;
+                    break;
+                }
+            }
+            if (!quiet)
+            {
+                break;
+            }
+        }
+        if (quiet)
+        {
+            if (++silentPostBlocks >= kPostProcessTailBlocks)
+            {
+                postProcessTailing = false;
+            }
+        }
+        else
+        {
+            silentPostBlocks = 0;
+        }
+    }
+    else
+    {
+        postProcessTailing = false;
+        silentPostBlocks = 0;
+    }
+}
+
+bool InstrumentImpl::isIdle() const
+{
+    if (voices.empty())
+    {
+        return true;
+    }
+    if (!shouldSleepWhenIdle() || postProcessTailing)
+    {
+        return false;
+    }
+    return std::ranges::none_of(voices, [](const auto& v) { return v.voice->isActive(); });
+}
+
+bool InstrumentImpl::prepareSilentBlock()
+{
+    if (isIdle())
+    {
+        return true;
+    }
+    if (postProcessTailing || voices.empty() || !voices[0].voice->hasTickIdle())
+    {
+        return false;
+    }
+    if (std::ranges::any_of(voices, [](const auto& v) { return v.voice->isActive(); }))
+    {
+        return false;
+    }
+    const InstrumentVoice::InstrumentVoiceContext ctx = { getTempo() };
+    for (auto& voice : voices)
+    {
+        voice.voice->tickIdle(ctx);
+    }
+    return true;
 }
 float InstrumentImpl::getTempo() const
 {

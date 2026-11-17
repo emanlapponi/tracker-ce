@@ -127,6 +127,9 @@ class AudioFilterStateVariable : public AudioStream
           kUnityValue;
     }
 
+#ifdef AUDIO_NULL_IS_SILENCE
+    bool isSettledOnSilence() const;
+#endif
     void update_fixed(const int16_t* in, int16_t* out, int samples);
     void update_overdrive(const int16_t* in, int16_t* out);
     void stabilize();

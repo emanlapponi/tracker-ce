@@ -49,6 +49,11 @@
 // Some parts of the audio library may have hard-coded dependency on 128 samples.
 // Please report these on the forum with reproducible test cases.
 #define AUDIO_BLOCK_SAMPLES     128
+// A NULL input block means a block of silence, not a missing one. Idle streams transmit nothing
+// and consumers skip work or keep exact zero state (meters, filters, delays, export taps).
+#ifndef AUDIO_NULL_IS_SILENCE
+#define AUDIO_NULL_IS_SILENCE   1
+#endif
 #define AUDIO_SAMPLE_RATE_EXACT 44117.64706f // 48 MHz / 1088, or 96 MHz * 2 / 17 / 256
 #define AUDIO_SAMPLE_RATE       AUDIO_SAMPLE_RATE_EXACT
 
@@ -155,15 +160,14 @@ class AudioStream
     static uint16_t memory_used_max;
     static bool renderMode;
     static void update_all(void);
-#ifdef PLATFORM_IMX
     static void setUsbAudio(UsbAudio* usbAudio) { AudioStream::usbAudio = usbAudio; }
-#endif
 
   protected:
-#ifdef PLATFORM_IMX
     static UsbAudio* usbAudio;
-#endif
     bool active;
+    // Set by AudioConnection::connect() when a source stream is updated after this stream in update_all(),
+    // meaning a block may remain in flight between update rounds. Never cleared once set.
+    bool hasLaterSource = false;
     unsigned char num_inputs;
     static audio_block_t* allocate(void);
     static void release(audio_block_t* block);

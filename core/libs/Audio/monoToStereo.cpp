@@ -26,31 +26,50 @@
 
 #include "monoToStereo.h"
 #include "dspApplyGain.h"
+#include "dspApplyGainCopy.h"
 
 AUDIO_CORE_FLASH void MonoToStereo::update(void)
 {
-    audio_block_t* block[Channel::channelCount];
+    audio_block_t* in = receiveReadOnly(0);
 
-    block[Channel::left] = receiveWritable(0);
-
-    if (block[Channel::left] == nullptr)
+    if (in == nullptr)
     {
+#ifdef AUDIO_NULL_IS_SILENCE
+        for (int channel = 0; channel < Channel::channelCount; channel++)
+        {
+            previous_multiplier[channel] = multiplier[channel];
+        }
+#endif
         return;
     }
 
-    block[Channel::right] = allocate();
-    if (block[Channel::right] == nullptr)
+    audio_block_t* out[Channel::channelCount] = { nullptr, nullptr };
+    for (int channel = 0; channel < Channel::channelCount; channel++)
     {
-        release(block[Channel::left]);
-        return;
+        if (multiplier[channel] == MULTI_UNITYGAIN &&
+            previous_multiplier[channel] == MULTI_UNITYGAIN)
+            continue;
+        out[channel] = allocate();
+        if (out[channel] == nullptr)
+        {
+            if (out[Channel::left])
+                release(out[Channel::left]);
+            release(in);
+            return;
+        }
     }
-
-    memcpy(block[Channel::right]->data, block[Channel::left]->data, AUDIO_BLOCK_SAMPLES * 2);
 
     for (int channel = 0; channel < Channel::channelCount; channel++)
     {
-        applyGain(block[channel]->data, multiplier[channel], previous_multiplier[channel]);
-        transmit(block[channel], channel);
-        release(block[channel]);
+        if (out[channel] == nullptr)
+        {
+            transmit(in, channel);
+            continue;
+        }
+        gain_copy::applyGainCopy16<AUDIO_BLOCK_SAMPLES>(
+          out[channel]->data, in->data, multiplier[channel], previous_multiplier[channel]);
+        transmit(out[channel], channel);
+        release(out[channel]);
     }
+    release(in);
 }

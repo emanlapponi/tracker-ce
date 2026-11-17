@@ -51,8 +51,8 @@ Before submitting your PR, verify the following:
 * **Full Build Verification**:
   * Run `make all` (which includes `make psyn`) and `make ptfx` locally and confirm zero compiler or linker errors across Original, Plus, and Mini.
 * **Memory Headroom (`SRAM_DTC` / `RAM` & `EXTERNAL_RAM`)**:
-  * Check the linker memory output (also reported automatically in the GitHub Actions job summary).
-  * On **Tracker+ and Tracker Mini (`IMX`)**, `SRAM_DTC` has `~22–23 KB` free and `EXTERNAL_RAM` has `~92 KB` immediately free (plus up to `~29 MB` theoretically reclaimable from `SAMPLE_MEMORY_SIZE` thanks to Hybrid SD Sample Streaming); on **Original Tracker (`MK66`)**, internal `RAM` has `~128 KB` free and `EXTERNAL_RAM` has `~1.39 MB` immediately free (plus up to `~3.5–4.0 MB` theoretically reclaimable from `SAMPLE_MEMORY_SIZE`), alongside the `768 KB` shared `externalRamScratchBuff` across all devices. Avoid adding large static arrays to default `.bss` without checking linker headroom (see [`docs/developer_guide.md`](docs/developer_guide.md#1-memory-budget--free-headroom)).
+  * Check the linker memory output from `make all` (`-print-memory-usage`, also posted automatically in the GitHub Actions job summary and PR firmware comment).
+  * Keep large or non-realtime arrays out of default `.bss` (use `__NOINIT(EXTERNAL_RAM)` with explicit startup initialization, or reuse `externalRamScratchBuff` for modal/offline features). See [`docs/memory_map.md`](docs/memory_map.md) for per-region capacities, baseline headroom, scratch buffer partitions, and `SAMPLE_MEMORY_SIZE` reclamation rules.
 * **Real-Time Audio Thread Safety**:
   * Never allocate/free heap memory (`new`, `delete`, `malloc`, `free`, `std::vector::push_back`, `std::string`), perform SD card I/O, or block inside audio-rate functions (`update()`, `renderVoiceAudio()`, `renderPostProcessAudio()`, `processBlock()`).
 * **Backward Compatibility (`.mt`, `.pti`, `.pts`, `mtConfig`)**:

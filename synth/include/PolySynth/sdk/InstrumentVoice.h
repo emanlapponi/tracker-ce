@@ -50,6 +50,16 @@ class InstrumentVoice
     virtual void renderPostProcessAudio(const InstrumentVoiceContext& /*ctx*/,
                                         AudioBufferStereoRef /*outputBuffer*/){};
 
+    virtual bool hasPostProcess() const { return false; }
+
+    /**
+     * Optional lightweight advance for idle voices (when Voice Sleep is Off and !isActive()),
+     * allowing free-running modulation/LFO state to stay in sync without rendering audio.
+     */
+    virtual void tickIdle(const InstrumentVoiceContext& /*ctx*/) {}
+
+    virtual bool hasTickIdle() const { return false; }
+
     virtual void renderGraph(std::span<float> points) { std::ranges::fill(points, 0); };
 
     /**

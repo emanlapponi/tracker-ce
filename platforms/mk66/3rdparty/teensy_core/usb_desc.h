@@ -369,9 +369,9 @@ let me know?  http://forum.pjrc.com/forums/4-Suggestions-amp-Bug-Reports
 #define MANUFACTURER_NAME_LEN 7
 
 #define EP0_SIZE    			64
-#define NUM_ENDPOINTS         	7
-#define NUM_USB_BUFFERS 		30
-#define NUM_INTERFACE   		4
+#define NUM_ENDPOINTS         	10
+#define NUM_USB_BUFFERS 		32
+#define NUM_INTERFACE   		7
 
 #define RAWHID_INTERFACE      	3 // RawHID
 #define RAWHID_TX_ENDPOINT    	1
@@ -401,6 +401,18 @@ let me know?  http://forum.pjrc.com/forums/4-Suggestions-amp-Bug-Reports
 #define MIDI_RX_ENDPOINT      	6
 #define MIDI_RX_SIZE          	64
 
+#define AUDIO_INTERFACE         4 // Audio (uses up to 3 consecutive interfaces)
+#define AUDIO_TX_ENDPOINT       8
+#define AUDIO_TX_SIZE           180
+#define AUDIO_RX_ENDPOINT       9
+#define AUDIO_RX_SIZE           180
+#define AUDIO_SYNC_ENDPOINT     10
+
+#define MSC_INTERFACE           0 // MSC (used in Storage mode, shares EP1/EP2 with RawHID)
+#define MSC_TX_ENDPOINT         1
+#define MSC_RX_ENDPOINT         2
+#define MSC_EP_SIZE             64
+
 #define ENDPOINT1_CONFIG  ENDPOINT_TRANSMIT_ONLY
 #define ENDPOINT2_CONFIG  ENDPOINT_RECEIVE_ONLY
 
@@ -411,6 +423,12 @@ let me know?  http://forum.pjrc.com/forums/4-Suggestions-amp-Bug-Reports
 #define ENDPOINT6_CONFIG  ENDPOINT_RECEIVE_ONLY
 
 #define ENDPOINT7_CONFIG  ENDPOINT_TRANSMIT_ONLY
+
+#define ENDPOINT8_CONFIG  ENDPOINT_TRANSMIT_ISOCHRONOUS
+#define ENDPOINT9_CONFIG  ENDPOINT_RECEIVE_ISOCHRONOUS
+#define ENDPOINT10_CONFIG ENDPOINT_TRANSMIT_ISOCHRONOUS
+
+#define USB_DYNAMIC_CONFIG 1
 
 
 #elif defined(USB_MIDI4)
@@ -928,5 +946,31 @@ typedef struct {
 extern const usb_descriptor_list_t usb_descriptor_list[];
 #endif // NUM_ENDPOINTS
 #endif // USB_DESC_LIST_DEFINE
+
+#ifdef USB_DYNAMIC_CONFIG
+#define USB_CFG_MIDI      (1U << 0)
+#define USB_CFG_SERIAL    (1U << 1)
+#define USB_CFG_RAWHID    (1U << 2)
+#define USB_CFG_AUDIO_OUT (1U << 3)
+#define USB_CFG_AUDIO_IN  (1U << 4)
+#define USB_CFG_MSC       (1U << 5)
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+void usb_desc_configure(uint8_t flags);
+uint8_t usb_desc_get_flags(void);
+extern const uint8_t *usb_active_endpoint_config_table;
+extern uint8_t usb_audio_ctrl_interface;
+extern uint8_t usb_audio_tx_interface;
+extern uint8_t usb_audio_rx_interface;
+extern uint8_t usb_msc_interface;
+#ifdef USB_DESC_LIST_DEFINE
+extern const usb_descriptor_list_t *usb_active_descriptor_list;
+#endif
+#ifdef __cplusplus
+}
+#endif
+#endif
 
 #endif

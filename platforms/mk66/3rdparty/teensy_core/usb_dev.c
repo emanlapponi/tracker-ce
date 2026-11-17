@@ -190,12 +190,24 @@ static void usb_setup(void)
 		//serial_print("configure\n");
 		usb_configuration = setup.wValue;
 		reg = &USB0_ENDPT1;
+#ifdef USB_DYNAMIC_CONFIG
+		cfg = usb_active_endpoint_config_table;
+#else
 		cfg = usb_endpoint_config_table;
+#endif
 		// clear all BDT entries, free any allocated memory...
 		for (i=4; i < (NUM_ENDPOINTS+1)*4; i++) {
+#ifdef AUDIO_INTERFACE
+			uint8_t ep = i >> 2;
+			if (ep == AUDIO_TX_ENDPOINT || ep == AUDIO_RX_ENDPOINT || ep == AUDIO_SYNC_ENDPOINT) {
+				table[i].desc = 0;
+				continue;
+			}
+#endif
 			if (table[i].desc & BDT_OWN) {
 				usb_free((usb_packet_t *)((uint8_t *)(table[i].addr) - 8));
 			}
+			table[i].desc = 0;
 		}
 		// free all queued packets
 		for (i=0; i < NUM_ENDPOINTS; i++) {
@@ -236,7 +248,7 @@ static void usb_setup(void)
 			*reg = epconf;
 			reg += 4;
 #ifdef AUDIO_INTERFACE
-			if (i == AUDIO_RX_ENDPOINT) {
+			if (i == AUDIO_RX_ENDPOINT && (epconf & USB_ENDPT_EPRXEN)) {
 				table[index(i, RX, EVEN)].addr = usb_audio_receive_buffer;
 				table[index(i, RX, EVEN)].desc = (AUDIO_RX_SIZE<<16) | BDT_OWN;
 				table[index(i, RX, ODD)].addr = usb_audio_receive_buffer;
@@ -265,7 +277,7 @@ static void usb_setup(void)
 			table[index(i, TX, EVEN)].desc = 0;
 			table[index(i, TX, ODD)].desc = 0;
 #ifdef AUDIO_INTERFACE
-			if (i == AUDIO_SYNC_ENDPOINT) {
+			if (i == AUDIO_SYNC_ENDPOINT && (epconf & USB_ENDPT_EPTXEN)) {
 				table[index(i, TX, EVEN)].addr = &usb_audio_sync_feedback;
 				table[index(i, TX, EVEN)].desc = (3<<16) | BDT_OWN;
 			}
@@ -321,7 +333,11 @@ static void usb_setup(void)
 		//serial_print("desc:");
 		//serial_phex16(setup.wValue);
 		//serial_print("\n");
+#ifdef USB_DYNAMIC_CONFIG
+		for (list = usb_active_descriptor_list; 1; list++) {
+#else
 		for (list = usb_descriptor_list; 1; list++) {
+#endif
 			if (list->addr == NULL) break;
 			//if (setup.wValue == list->wValue &&
 			//(setup.wIndex == list->wIndex) || ((setup.wValue >> 8) == 3)) {
@@ -400,9 +416,14 @@ static void usb_setup(void)
 
 #if defined(AUDIO_INTERFACE)
 	  case 0x0B01: // SET_INTERFACE (alternate setting)
+#ifdef USB_DYNAMIC_CONFIG
+		if (usb_audio_tx_interface != 0xFF && setup.wIndex == usb_audio_tx_interface) {
+#else
 		if (setup.wIndex == AUDIO_INTERFACE+1) {
+#endif
 			usb_audio_transmit_setting = setup.wValue;
 			if (usb_audio_transmit_setting > 0) {
+				usb_audio_reset_tx();
 				bdt_t *b = &table[index(AUDIO_TX_ENDPOINT, TX, EVEN)];
 				uint8_t state = tx_state[AUDIO_TX_ENDPOINT-1];
 				if (state) b++;
@@ -413,7 +434,11 @@ static void usb_setup(void)
 					tx_state[AUDIO_TX_ENDPOINT-1] = state ^ 1;
 				}
 			}
+#ifdef USB_DYNAMIC_CONFIG
+		} else if (usb_audio_rx_interface != 0xFF && setup.wIndex == usb_audio_rx_interface) {
+#else
 		} else if (setup.wIndex == AUDIO_INTERFACE+2) {
+#endif
 			usb_audio_receive_setting = setup.wValue;
 		} else {
 			endpoint0_stall();
@@ -423,10 +448,17 @@ static void usb_setup(void)
 	  case 0x0A81: // GET_INTERFACE (alternate setting)
 		datalen = 1;
 		data = reply_buffer;
+#ifdef USB_DYNAMIC_CONFIG
+		if (usb_audio_tx_interface != 0xFF && setup.wIndex == usb_audio_tx_interface) {
+			reply_buffer[0] = usb_audio_transmit_setting;
+		} else if (usb_audio_rx_interface != 0xFF && setup.wIndex == usb_audio_rx_interface) {
+			reply_buffer[0] = usb_audio_receive_setting;
+#else
 		if (setup.wIndex == AUDIO_INTERFACE+1) {
 			reply_buffer[0] = usb_audio_transmit_setting;
 		} else if (setup.wIndex == AUDIO_INTERFACE+2) {
 			reply_buffer[0] = usb_audio_receive_setting;
+#endif
 		} else {
 			endpoint0_stall();
 			return;
@@ -458,6 +490,27 @@ static void usb_setup(void)
 			reply_buffer[2] = 0;
 			datalen = 3;
 			data = reply_buffer;
+		} else {
+			endpoint0_stall();
+			return;
+		}
+		break;
+#endif
+
+#if defined(MSC_INTERFACE)
+	  case 0xFEA1: // MSC GET_MAX_LUN
+		if (usb_msc_interface != 0xFF && setup.wIndex == usb_msc_interface && setup.wValue == 0 && setup.wLength == 1) {
+			reply_buffer[0] = 0;
+			data = reply_buffer;
+			datalen = 1;
+		} else {
+			endpoint0_stall();
+			return;
+		}
+		break;
+	  case 0xFF21: // MSC BULK_ONLY_RESET
+		if (usb_msc_interface != 0xFF && setup.wIndex == usb_msc_interface && setup.wValue == 0 && setup.wLength == 0) {
+			usb_msc_bulk_only_reset();
 		} else {
 			endpoint0_stall();
 			return;
@@ -933,7 +986,7 @@ void usb_isr(void)
 			endpoint--;	// endpoint is index to zero-based arrays
 
 #ifdef AUDIO_INTERFACE
-			if ((endpoint == AUDIO_TX_ENDPOINT-1) && (stat & 0x08)) {
+			if ((usb_audio_tx_interface != 0xFF) && (endpoint == AUDIO_TX_ENDPOINT-1) && (stat & 0x08)) {
 				unsigned int len;
 				len = usb_audio_transmit_callback();
 				if (len > 0) {
@@ -942,11 +995,11 @@ void usb_isr(void)
 					b->desc = (len << 16) | BDT_OWN;
 					tx_state[endpoint] ^= 1;
 				}
-			} else if ((endpoint == AUDIO_RX_ENDPOINT-1) && !(stat & 0x08)) {
+			} else if ((usb_audio_rx_interface != 0xFF) && (endpoint == AUDIO_RX_ENDPOINT-1) && !(stat & 0x08)) {
 				usb_audio_receive_callback(b->desc >> 16);
 				b->addr = usb_audio_receive_buffer;
 				b->desc = (AUDIO_RX_SIZE << 16) | BDT_OWN;
-			} else if ((endpoint == AUDIO_SYNC_ENDPOINT-1) && (stat & 0x08)) {
+			} else if ((usb_audio_rx_interface != 0xFF) && (endpoint == AUDIO_SYNC_ENDPOINT-1) && (stat & 0x08)) {
 				b = (bdt_t *)((uint32_t)b ^ 8);
 				b->addr = &usb_audio_sync_feedback;
 				b->desc = (3 << 16) | BDT_OWN;
@@ -1069,6 +1122,11 @@ void usb_isr(void)
 
 		// set the address to zero during enumeration
 		USB0_ADDR = 0;
+		usb_configuration = 0;
+#ifdef AUDIO_INTERFACE
+		usb_audio_transmit_setting = 0;
+		usb_audio_receive_setting = 0;
+#endif
 
 		// enable other interrupts
 		USB0_ERREN = 0xFF;
@@ -1114,6 +1172,12 @@ void usb_init(void)
 
 	//serial_begin(BAUD2DIV(115200));
 	//serial_print("usb_init\n");
+
+#ifdef USB_DYNAMIC_CONFIG
+	if (usb_active_descriptor_list == usb_descriptor_list) {
+		usb_desc_configure(usb_desc_get_flags());
+	}
+#endif
 
 	usb_init_serialnumber();
 
@@ -1167,6 +1231,65 @@ void usb_init(void)
 	// enable d+ pullup
 	USB0_CONTROL = USB_CONTROL_DPPULLUPNONOTG;
 }
+
+#ifdef USB_DYNAMIC_CONFIG
+void usb_reinit(uint8_t flags)
+{
+	int i;
+
+	NVIC_DISABLE_IRQ(IRQ_USBOTG);
+	USB0_INTEN = 0;
+	USB0_CONTROL = 0; // detach D+ pull-up so host sees disconnect
+	USB0_CTL = 0;
+	USB0_ADDR = 0;
+	for (i = 0; i < 15; i++) {
+		*((volatile uint8_t *)&USB0_ENDPT1 + i * 4) = 0;
+	}
+	usb_configuration = 0;
+	usb_rx_memory_needed = 0;
+#ifdef AUDIO_INTERFACE
+	usb_audio_transmit_setting = 0;
+	usb_audio_receive_setting = 0;
+#endif
+#ifdef MSC_INTERFACE
+	usb_msc_bulk_only_reset();
+#endif
+
+	// Free any packets held in BDTs or rx/tx queues (skipping static audio buffers)
+	for (i = 4; i < (NUM_ENDPOINTS + 1) * 4; i++) {
+#ifdef AUDIO_INTERFACE
+		uint8_t ep = i >> 2;
+		if (ep == AUDIO_TX_ENDPOINT || ep == AUDIO_RX_ENDPOINT || ep == AUDIO_SYNC_ENDPOINT) {
+			table[i].desc = 0;
+			continue;
+		}
+#endif
+		if ((table[i].desc & BDT_OWN) && table[i].addr) {
+			usb_free((usb_packet_t *)((uint8_t *)(table[i].addr) - 8));
+		}
+		table[i].desc = 0;
+	}
+	for (i = 0; i < NUM_ENDPOINTS; i++) {
+		usb_packet_t *p, *n;
+		p = rx_first[i];
+		while (p) { n = p->next; usb_free(p); p = n; }
+		rx_first[i] = NULL;
+		rx_last[i] = NULL;
+		p = tx_first[i];
+		while (p) { n = p->next; usb_free(p); p = n; }
+		tx_first[i] = NULL;
+		tx_last[i] = NULL;
+		usb_rx_byte_count_data[i] = 0;
+		tx_state[i] = 0;
+	}
+
+	delay(150);
+	USB0_USBTRC0 = USB_USBTRC_USBRESET;
+	while (USB0_USBTRC0 & USB_USBTRC_USBRESET) ;
+	usb_desc_configure(flags);
+	usb_init();
+}
+#endif
 
 
 #else // F_CPU < 20 MHz && defined(NUM_ENDPOINTS)

@@ -314,6 +314,12 @@ class AudioPlayMemory : public AudioStream
     const int16_t* currentSliceCacheAddress = nullptr;
     uint32_t currentSliceCacheFrames = 0;
 
+    // The not streamed read of readSampleAtRel, for the fast loops that have checked currentIsStreamed once
+    static inline int16_t readRaw(const int16_t* in, int32_t relOffset)
+    {
+        return *(in + relOffset);
+    }
+
     inline int16_t readSampleAtRel(const int16_t* in, int32_t relOffset) const
     {
         if (!currentIsStreamed)

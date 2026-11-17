@@ -4,12 +4,17 @@
 #include "AudioStream.h"
 #include <algorithm>
 #include <vector>
-#ifdef PLATFORM_IMX
+
 class UsbOutputStream : public AudioStream
 {
   protected:
+#ifdef PLATFORM_IMX
     static constexpr int kInputChannelsCount = 28;
     static constexpr int kUsbChannelsCount = 28;
+#else
+    static constexpr int kInputChannelsCount = 2;
+    static constexpr int kUsbChannelsCount = 2;
+#endif
     static constexpr int kChannelDisconnected = -1;
     audio_block_t* inputQueueArray[kInputChannelsCount];
     int usbChannelToInput[kUsbChannelsCount];
@@ -44,7 +49,7 @@ class UsbOutputStream : public AudioStream
         std::fill(std::begin(usbChannelToInput), std::end(usbChannelToInput), kChannelDisconnected);
     }
     virtual void update(void);
+    void syncActive();
 };
-#endif
 
 #endif /* LIBS_AUDIO_USBOUTPUT_H_ */

@@ -26,6 +26,7 @@
 
 #include "amplifier.h"
 #include "dspApplyGain.h"
+#include "dspApplyGainCopy.h"
 
 AUDIO_CORE_RAM void AudioAmplifier::update(void)
 {
@@ -40,11 +41,31 @@ AUDIO_CORE_RAM void AudioAmplifier::update(void)
         return;
     }
 
-    audio_block_t* block = receiveWritable(0);
-    if (block)
+    audio_block_t* block = receiveReadOnly(0);
+    if (block && block->ref_count > 1)
+    {
+        audio_block_t* out = allocate();
+        if (out)
+            gain_copy::applyGainCopy16<AUDIO_BLOCK_SAMPLES>(
+              out->data, block->data, multiplier, previousMultiplier);
+        release(block);
+        block = out;
+        if (block)
+        {
+            transmit(block);
+            release(block);
+        }
+    }
+    else if (block)
     {
         applyGain(block->data, multiplier, previousMultiplier);
         transmit(block);
         release(block);
     }
+#ifdef AUDIO_NULL_IS_SILENCE
+    if (!block)
+    {
+        previousMultiplier = multiplier;
+    }
+#endif
 }

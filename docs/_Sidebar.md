@@ -10,6 +10,7 @@
 * **[Modular Effects (.ptfx)](modular_effects_system)**
 
 #### Developer & SDK Guides
+* **[Memory Map & Resource Limits](memory_map)**
 * **[Architecture, Limits & Gotchas](developer_guide)**
 * **[Global File Browser](global_file_browser)**
 * **[Custom Synth Engine SDK (.psyn)](custom_synth_sdk)**

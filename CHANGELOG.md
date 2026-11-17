@@ -49,7 +49,7 @@ All notable changes to the **Polyend Tracker Community Edition (CE)** firmware a
      * **Original Tracker**: Streams **`One-Shot`**, **`Forward Loop`**, **`Backward Loop`**, and **`Ping-Pong Loop`** instruments, while keeping **`Slice`** and **`Beat Slice`** instruments (alongside `Wavetable` and `Granular`) fully in RAM to keep performance solid across multiple tracks.
        
    * **Works Transparently with the Sample Editor**: You can still edit streamed samples in the Sample Editor or switch play modes at any time. The Tracker automatically loads the full sample into RAM while you edit it and returns to streaming once your edits are applied. This excludes very long sample however, due to RAM restrictions. If you plan to stream multi-minutes samples, please prepare them outside of the device.
-   * See [`docs/developer_guide.md`](docs/developer_guide.md#3-copy-on-write-workspaceinstruments-incremental-project-saver--hybrid-sd-streaming) for technical details.
+   * See [`docs/developer_guide.md`](docs/developer_guide.md#1-copy-on-write-workspaceinstruments-incremental-project-saver--hybrid-sd-streaming) for technical details.
 
 7. **`Slice` & `Beat Slice` Instruments can now `Play Thru` (All 3 Devices)**
    * Added a per-instrument **`Play Thru`** (`Off` / `On`) setting on the **`More`** page of the **Sample Playback** screen for both **`Slice`** and **`Beat Slice`** modes.

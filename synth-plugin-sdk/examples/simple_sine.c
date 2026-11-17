@@ -274,6 +274,8 @@ static const PsynPluginApi kPluginApi = {
     .voice_get_current_velocity = voice_get_current_velocity,
     .voice_clear_previous_notes = voice_clear_previous_notes,
     .voice_reset = voice_reset,
+    /* Optional: populate alongside PSYN_FLAG_HAS_VOICE_TICK_IDLE when PSYN_FLAG_SUPPORTS_IDLE_SLEEP is used */
+    .voice_tick_idle = NULL,
 };
 
 const PsynPluginApi* psyn_plugin_entry(const PsynHostApi* host)

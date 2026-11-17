@@ -48,6 +48,9 @@ extern "C" {
 #endif
 
 void usb_init(void);
+#ifdef USB_DYNAMIC_CONFIG
+void usb_reinit(uint8_t flags);
+#endif
 void usb_init_serialnumber(void);
 void usb_isr(void);
 usb_packet_t *usb_rx(uint32_t endpoint);
@@ -112,6 +115,11 @@ extern int usb_audio_set_feature(void *stp, uint8_t *buf);
 
 #ifdef MULTITOUCH_INTERFACE
 extern void usb_touchscreen_update_callback(void);
+#endif
+
+#ifdef MSC_INTERFACE
+extern void usb_msc_bulk_only_reset(void);
+extern void usb_msc_update(void);
 #endif
 
 

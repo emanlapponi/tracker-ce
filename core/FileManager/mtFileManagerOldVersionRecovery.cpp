@@ -363,7 +363,10 @@ static void recoveryProjectVersion15()
     projectNameShift += sizeof(newProject->values.allPatternsBitmaskMidi);
     projectNameShift += sizeof(newProject->values.midiTrackMute);
 
-    strcpy(newProject->projectName, oldProject.projectName - projectNameShift);
+    // The name in a damaged file may have no terminator.
+    strncpy(
+      newProject->projectName, oldProject.projectName - projectNameShift, PROJECT_NAME_SIZE - 1);
+    newProject->projectName[PROJECT_NAME_SIZE - 1] = 0;
 #if FILEMANAGER_HANDLE_SYNTH == 1
     for (int part = 0; part < kSynthInstrumentsCount; part++)
     {

@@ -10,7 +10,6 @@ void setDisplayTheme();
 void setDisplayFont();
 void refreshThemeAndFontMenuOptions();
 void setPadsBrightness();
-void setLineInOutType();
 
 void setPadBoardValues();
 void setAntialiasingEnable();

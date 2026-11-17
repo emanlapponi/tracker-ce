@@ -366,6 +366,7 @@ uint8_t cProjectEditor::loadProjectValues()
     engine.setDelayTime(mtProject.values.delayTime);
     engine.setDelayParams(mtProject.values.delayParams);
     engine.setDelayFilterFrequency(mtProject.values.delayFilterFrequency);
+    engine.resetDelay();
     engine.setHeadroomEnable((bool)mtProject.values.isHeadroomEnabled);
     engine.setSnapToZeroEnable((bool)mtProject.values.isSnapToZeroEnabled);
     engine.setSaturationType((SaturationType)mtProject.values.saturationType);

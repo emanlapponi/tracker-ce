@@ -20,6 +20,7 @@ class Recorder
         int destinationChannels;
         int sourceChannels;
         Source source = Source::kI2s;
+        bool useRightChannelForMono = false;
     };
     int16_t* getAddress(AudioInput::InputChannels channel);
     uint32_t getLength();

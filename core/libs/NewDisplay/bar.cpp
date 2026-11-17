@@ -57,9 +57,10 @@ void cBar::setStyle(uint32_t style)
                 (style & controlStyleCenterY ? OPT_CENTERY : 0) |
                 (style & controlStyleRightX ? OPT_RIGHTX : 0);
 
-    textFont = FONT_INDEX_FROM_STYLE;
-    textFont = (textFont >= 0) ? textFont : 0;
-    textFont = fonts[textFont].handle;
+    int8_t fontIdx = FONT_INDEX_FROM_STYLE;
+    fontIdx = (fontIdx >= 0) ? fontIdx : 0;
+    font = &fonts[fontIdx];
+    textFont = font->handle;
 }
 
 void cBar::setText(const char* text)
@@ -138,6 +139,73 @@ void cBar::update()
             API_CMD_GRADIENT(posX + 10, 0, 0x0, posX + 18, 0, colors[3]);
             API_RESTORE_CONTEXT();
         }
+    }
+
+    if (style & controlStyleVerticalText)
+    {
+        if (text != nullptr && text[0] != '\0')
+        {
+            const strFont* drawFont = (font != nullptr) ? font : &fonts[1];
+            const uint16_t side = 2u * (drawFont->height / 2u);
+            const int16_t maxTextPx =
+              (barHeight > 24) ? static_cast<int16_t>(barHeight - 24) : static_cast<int16_t>(barHeight);
+
+            int16_t totalPx = 0;
+            uint8_t drawLen = 0;
+            for (uint8_t i = 0; text[i] != '\0'; i++)
+            {
+                uint8_t ch = static_cast<uint8_t>(text[i]);
+                int16_t adv = (ch < 148) ? (drawFont->data[ch] + 1) : (drawFont->height / 2);
+                if (totalPx + adv > maxTextPx)
+                {
+                    break;
+                }
+                totalPx += adv;
+                drawLen++;
+            }
+
+            if (drawLen > 0)
+            {
+                API_COLOR(colors[0]);
+                API_SAVE_CONTEXT();
+
+                API_BITMAP_HANDLE(drawFont->handle);
+                API_BEGIN(BITMAPS);
+                API_BITMAP_SIZE(NEAREST, BORDER, BORDER, drawFont->height, drawFont->height);
+                API_BITMAP_ROTATE_270(drawFont->height);
+
+                int16_t x = posX + (width / 2) - (drawFont->height / 2);
+                int16_t y = barY + (barHeight / 2) + (totalPx / 2) - side;
+
+                API_BITMAP_HANDLE(drawFont->handle);
+                API_BEGIN(BITMAPS);
+
+                for (uint8_t i = 0; i < drawLen; i++)
+                {
+                    uint8_t ch = static_cast<uint8_t>(text[i]);
+                    if (x >= 0 && x <= 799 && y >= 0 && y <= 479 && ch >= 32)
+                    {
+                        if (x > 511 || y > 511)
+                        {
+                            API_CELL(ch);
+                            API_VERTEX2F(x, y);
+                        }
+                        else
+                        {
+                            API_VERTEX2II(x, y, drawFont->handle, static_cast<char>(ch));
+                        }
+                    }
+                    if (ch < 148)
+                    {
+                        y -= drawFont->data[ch] + 1;
+                    }
+                }
+
+                API_END();
+                API_RESTORE_CONTEXT();
+            }
+        }
+        return;
     }
 
     if (style & controlStyleCompareTwoValues && value >= 0 && value <= 100 && data->value >= 0 &&

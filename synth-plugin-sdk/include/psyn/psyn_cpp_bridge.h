@@ -23,6 +23,7 @@
 #include <new>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 /* Provide a lightweight fmt::format before SynthVoiceSDK.h or synths_utils.h includes <fmt/format.h> */
 #ifndef FMT_FORMAT_H_
@@ -996,8 +997,26 @@ class PluginAdapter
         static_cast<VoiceHolder<VoiceClass>*>(v)->voice.reset();
     }
 
+    static void voiceTickIdle(void* v, const PsynVoiceContext* ctx)
+    {
+        auto* holder = static_cast<VoiceHolder<VoiceClass>*>(v);
+        polysynth::InstrumentVoice::InstrumentVoiceContext vctx{
+            .tempo = ctx ? ctx->tempo : 120.0f,
+            .pitchbendRangeSemitones = ctx ? ctx->pitchbend_range_semitones : 2,
+        };
+        holder->voice.tickIdle(vctx);
+    }
+
     static const PsynPluginApi* getApi()
     {
+        static constexpr bool kOverridesPostProcess =
+          !std::is_same_v<decltype(&VoiceClass::renderPostProcessAudio),
+                          decltype(&polysynth::InstrumentVoice::renderPostProcessAudio)>;
+
+        static constexpr bool kOverridesTickIdle =
+          !std::is_same_v<decltype(&VoiceClass::tickIdle),
+                          decltype(&polysynth::InstrumentVoice::tickIdle)>;
+
         static const PsynPluginApi kApi = {
             .create_metadata = &createMetadata,
             .format_param = &formatParam,
@@ -1007,7 +1026,7 @@ class PluginAdapter
             .voice_on_midi_event = &voiceOnMidiEvent,
             .voice_on_param_change = &voiceOnParamChange,
             .voice_render_audio = &voiceRenderAudio,
-            .voice_render_post_process = &voiceRenderPostProcess,
+            .voice_render_post_process = kOverridesPostProcess ? &voiceRenderPostProcess : nullptr,
             .voice_render_graph = &voiceRenderGraph,
             .voice_is_active = &voiceIsActive,
             .voice_handles_note = &voiceHandlesNote,
@@ -1016,6 +1035,7 @@ class PluginAdapter
             .voice_get_current_velocity = &voiceGetCurrentVelocity,
             .voice_clear_previous_notes = &voiceClearPreviousNotes,
             .voice_reset = &voiceReset,
+            .voice_tick_idle = kOverridesTickIdle ? &voiceTickIdle : nullptr,
             .voice_render_audio_in = &voiceRenderAudioIn,
         };
         return &kApi;

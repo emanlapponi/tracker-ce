@@ -983,7 +983,7 @@ void cSampleRecorder::showMonitor()
 
 void cSampleRecorder::showGain()
 {
-    if (recorderConfig.source == sourceTypeLineIn)
+    if (isLineInSource())
     {
         sprintf(gainVal, "%d", recorderConfig.gainLineIn);
     }
@@ -999,12 +999,10 @@ void cSampleRecorder::showGain()
     {
         sprintf(gainVal, "%d", recorderConfig.gainMicHigh);
     }
-#ifdef PLATFORM_IMX
-    else if (recorderConfig.source == sourceTypeUsb)
+    else if (isUsbSource())
     {
         sprintf(gainVal, "%d", recorderConfig.gainUsb);
     }
-#endif
     display.setControlText2(label[GAIN_COL], gainVal);
     display.setControlShow(label[GAIN_COL]);
     display.refreshControl(label[GAIN_COL]);
@@ -1012,13 +1010,7 @@ void cSampleRecorder::showGain()
 
 void cSampleRecorder::resizeSpectrum()
 {
-
-#ifdef PLATFORM_IMX
-    bool isStereo = (recorderConfig.source != cSampleRecorder::sourceTypeMicHG &&
-                     recorderConfig.source != cSampleRecorder::sourceTypeMicLG);
-#else
-    bool isStereo = false;
-#endif
+    bool isStereo = isStereoSource();
 
     if (isStereo)
     {
@@ -1040,8 +1032,7 @@ bool cSampleRecorder::isChannelShown(int channel)
     }
     else if (channel == 1)
     {
-        return (recorderConfig.source != cSampleRecorder::sourceTypeMicHG &&
-                recorderConfig.source != cSampleRecorder::sourceTypeMicLG);
+        return isStereoSource();
     }
 
     assert(false);
@@ -1065,15 +1056,12 @@ void cSampleRecorder::formatTimeSeconds(char* destBuffer, size_t destBufferSize,
 void cSampleRecorder::setCurrentScreenType(screenType screenType)
 {
     currentScreen = screenType;
-#ifdef PLATFORM_IMX
     refreshOutputSource();
-#endif
 }
 
-#ifdef PLATFORM_IMX
 void cSampleRecorder::refreshOutputSource()
 {
-    if (recorderConfig.source == sourceTypeUsb)
+    if (isUsbSource())
     {
         if (currentScreen == screenType::screenTypeConfig || recordInProgressFlag == 1)
         {
@@ -1090,4 +1078,3 @@ void cSampleRecorder::refreshOutputSource()
         engine.setOutputSource(audioEngine::OutputSourceType::kRegularMix);
     }
 }
-#endif

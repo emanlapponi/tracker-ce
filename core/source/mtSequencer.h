@@ -2,6 +2,7 @@
 #define _MTSEQUENCER_H_
 
 #include "Platform.h"
+#include "internalTickClock.h"
 #include "mtChordDefs.h"
 #include "mtMidi.h"
 #include "mtStructs.h"
@@ -48,6 +49,7 @@ class Sequencer
         STEP_VELO_MIN = 0,
         STEP_VELO_MAX = 127,
         STEP_VELO_DEFAULT = -1,
+        STEP_VELO_OFF = -2,
     };
     enum enFillStep
     {
@@ -326,7 +328,7 @@ class Sequencer
                 }
                 bool hasAnyFx()
                 {
-                    return fx[0].type != 0 || fx[1].type != 0 || volume >= 0 || micromove >= 0;
+                    return fx[0].type != 0 || fx[1].type != 0 || volume != STEP_VELO_DEFAULT || micromove >= 0;
                 }
 
             } step[MAXSTEP + 1];
@@ -1045,7 +1047,7 @@ class Sequencer
     int externalClockPulses = 0;
     int externalClocksToPlay = 0;
 
-    double internalTickAccumulatorUs = 0.0;
+    InternalTickClock internalTickClock;
 
     seqtimesec_t timeWithoutClockPulse = 0;
     int16_t externalClockCompensation_clockSignals = 0;

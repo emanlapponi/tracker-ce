@@ -47,6 +47,11 @@ struct GlobalFileBrowserConfig
     std::function<void(uint8_t pad, uint8_t state, int16_t velo)> onPadEvent;
     std::function<std::string(const std::string& fullPath, bool isFolder, bool isPackage)>
       onDescribeItem;
+    std::function<std::string(const std::string& fullPath,
+                              const char* rawName,
+                              bool isFolder,
+                              bool isPackage)>
+      onFormatItemLabel;
     std::function<bool(const std::string& fullPath,
                        bool isFolder,
                        bool isPackage,
@@ -155,6 +160,7 @@ class cGlobalFileBrowser : public ModuleBase
   private:
     void returnToCallerModule();
     void rebuildFocusLayout();
+    void rebuildExplorerDisplayLabels();
     void updateInspectorLabels();
     void notifyHighlightChanged();
     void saveCurrentContext() const;

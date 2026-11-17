@@ -45,6 +45,8 @@ $(BUILD_DIR)/CHIP.elf: $(SDK_DIR)/engines/chip.cpp $(SDK_DIR)/include/psyn/psyn_
 	$(CXX) $(CXXFLAGS) $< $(LDFLAGS) -o $@
 
 HAS_SAMPLE_SLOTS ?= 0
+SUPPORTS_IDLE_SLEEP ?= 1
+HAS_VOICE_TICK_IDLE ?= 1
 
 $(BUILD_DIR)/CHIP.psyn: $(BUILD_DIR)/CHIP.elf $(SDK_DIR)/tools/psyn_builder.py
 	$(PYTHON) $(SDK_DIR)/tools/psyn_builder.py \
@@ -59,7 +61,9 @@ $(BUILD_DIR)/CHIP.psyn: $(BUILD_DIR)/CHIP.elf $(SDK_DIR)/tools/psyn_builder.py
 		--max-voices 8 \
 		--output-channels 1 \
 		--renders-aux 0 \
-		--has-sample-slots $(HAS_SAMPLE_SLOTS)
+		--has-sample-slots $(HAS_SAMPLE_SLOTS) \
+		--supports-idle-sleep $(SUPPORTS_IDLE_SLEEP) \
+		--has-voice-tick-idle $(HAS_VOICE_TICK_IDLE)
 
 $(BUILD_DIR)/BUS.elf: $(SDK_DIR)/engines/bus.cpp $(SDK_DIR)/include/psyn/psyn_plugin.h $(SDK_DIR)/include/psyn/psyn_cpp_bridge.h $(SDK_DIR)/tools/psyn.ld
 	@mkdir -p $(BUILD_DIR)

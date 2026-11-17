@@ -88,10 +88,25 @@ AUDIO_CORE_FLASH void AudioRecordQueue::update(void)
 
     block = receiveReadOnly();
     if (!block)
+    {
+#ifdef AUDIO_NULL_IS_SILENCE
+        if (!enabled)
+        {
+            sleepIfIdle();
+            return;
+        }
+        block = allocate();
+        if (!block)
+            return;
+        memset(block->data, 0, sizeof(block->data));
+#else
         return;
+#endif
+    }
     if (!enabled)
     {
         release(block);
+        sleepIfIdle();
         return;
     }
     h = head + 1;

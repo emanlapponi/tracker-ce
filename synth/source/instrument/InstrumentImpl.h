@@ -73,6 +73,9 @@ class InstrumentImpl final
                            std::span<AudioBufferRef> auxOutBuffer,
                            std::optional<AudioBufferRef> sidechainBuffer = std::nullopt);
 
+    [[nodiscard]] bool isIdle() const;
+    [[nodiscard]] bool prepareSilentBlock();
+
     void onMidiEvent(const MidiEvent& event, MidiSource::Type sourceType, int sourceId);
 
     void setup(const InstrumentContext& context);
@@ -107,6 +110,17 @@ class InstrumentImpl final
     std::shared_ptr<Patch> patchAssigned = nullptr;
 
     TempoProvider tempoProvider;
+
+    static constexpr uint8_t kPostProcessTailBlocks = 32;
+    static constexpr sample_t kPostProcessQuietThreshold = 1.0e-5f;
+    bool postProcessTailing = false;
+    uint8_t silentPostBlocks = 0;
+
+    bool supportsIdleSleep = false;
+    int voiceSleepParamId = -1;
+    bool voiceSleepEnabled = true;
+
+    [[nodiscard]] bool shouldSleepWhenIdle() const { return supportsIdleSleep && voiceSleepEnabled; }
 
     InstrumentImpl(int instrumentId,
                    std::shared_ptr<InstrumentTypeRegistry> instrumentTypeRegistry_);

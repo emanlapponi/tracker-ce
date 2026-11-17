@@ -43,6 +43,7 @@ C_SRCS 	 	+= $(shell find ./sdmmc/ -name *.c)
 C_SRCS 	 	+= $(shell find ./usb/ -name *.c)
 C_SRCS 	 	+= $(shell find ./utilities/ -name *.c)
 ASM_SRCS 	+= $(shell find ./3rdparty/ -name *.S)
+ASM_SRCS 	+= $(shell find ./source/ -name *.S)
 
 _CPP_OBJS	= $(patsubst ./%.cpp, %.o, $(CPP_SRCS))
 _C_OBJS		= $(patsubst ./%.c, %.o, $(C_SRCS))

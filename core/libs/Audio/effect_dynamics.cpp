@@ -61,13 +61,25 @@ AUDIO_CORE_FLASH void AudioEffectDynamics::update(void)
 
     audio_block_t* block;
 
+#ifdef AUDIO_NULL_IS_SILENCE
+    const bool unread = outputIsUnread();
+    block = unread ? receiveReadOnly(0) : receiveWritable(0);
+#else
     block = receiveWritable(0);
+#endif
 
     if (!block)
         return;
 
     if (!gateEnabled && !compEnabled && !limiterEnabled)
     {
+#ifdef AUDIO_NULL_IS_SILENCE
+        if (unread)
+        {
+            release(block);
+            return;
+        }
+#endif
 
         // Transmit & release
         transmit(block);
@@ -134,6 +146,21 @@ AUDIO_CORE_FLASH void AudioEffectDynamics::update(void)
 
     // Compute linear gain
     float totalGain = gatedb + compdb + makeupdb + limitdb;
+#ifdef AUDIO_NULL_IS_SILENCE
+    if (unread)
+    {
+        pendingGain = totalGain;
+        lastMultPending = true;
+        release(block);
+        return;
+    }
+    if (lastMultPending)
+    {
+        int32_t pendingMult = dbToUnit(pendingGain) * 65536.0f;
+        last_mult = pendingMult;
+        lastMultPending = false;
+    }
+#endif
     int32_t mult = dbToUnit(totalGain) * 65536.0f;
 
     // Apply gain to block

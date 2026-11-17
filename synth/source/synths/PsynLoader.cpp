@@ -188,9 +188,13 @@ struct PluginRecord
 {
     bool valid = false;
     bool hasSampleSlots = false;
+    bool supportsIdleSleep = false;
+    bool hasVoiceTickIdle = false;
     bool metadataPrimedOnce = false;
     int index = -1;
     int typeId = 0;
+    int pluginParamCount = -1;
+    int voiceSleepParamId = -1;
     char filename[48]{};
     PsynHeader header{};
     uint8_t* imageBase = nullptr;
@@ -199,6 +203,125 @@ struct PluginRecord
     int activeVoices = 0;
     uint32_t lastUsedTick = 0;
 };
+
+bool isKnownStockIdleSleepSynth(const char* codeName)
+{
+    return std::strcmp(codeName, "ACD") == 0 || std::strcmp(codeName, "CHIP") == 0 ||
+           std::strcmp(codeName, "DIRT") == 0 || std::strcmp(codeName, "DWA") == 0 ||
+           std::strcmp(codeName, "FAT") == 0 || std::strcmp(codeName, "GRAIN") == 0 ||
+           std::strcmp(codeName, "PERC") == 0 || std::strcmp(codeName, "PHZ") == 0 ||
+           std::strcmp(codeName, "PMD") == 0 || std::strcmp(codeName, "VAP") == 0 ||
+           std::strcmp(codeName, "WAVS") == 0 || std::strcmp(codeName, "WTFM") == 0;
+}
+
+bool hasVoiceSectionInLayout(const Patch::Metadata::EditorLayout& layout)
+{
+    for (const auto& sec : layout.sections)
+    {
+        if (sec.name == "Voice" || sec.shortName == "Voice")
+        {
+            return true;
+        }
+        for (const auto& sub : sec.subsections)
+        {
+            if (sub.name == "Voice")
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void appendParamToVoiceSection(Patch::Metadata::EditorLayout& layout,
+                                 int paramId,
+                                 bool splitSubsectionsTo33)
+{
+    const Patch::Metadata::EditorLayout::EditorElement elem{
+        .type = Patch::Metadata::EditorLayout::EditorElement::Type::kParam,
+        .id = paramId,
+    };
+
+    for (auto& sec : layout.sections)
+    {
+        if (sec.name == "Voice" || sec.shortName == "Voice")
+        {
+            if (splitSubsectionsTo33 && !sec.subsections.empty())
+            {
+                constexpr size_t kKnobsPerSubsection = 9;
+                if (sec.subsections.back().elements.size() < kKnobsPerSubsection)
+                {
+                    sec.subsections.back().elements.push_back(elem);
+                }
+                else
+                {
+                    sec.subsections.push_back(Patch::Metadata::EditorLayout::EditorSubsection{
+                        .name = std::to_string(sec.subsections.size() + 1),
+                        .elements = { elem },
+                    });
+                }
+            }
+            else
+            {
+                sec.elements.push_back(elem);
+            }
+            return;
+        }
+    }
+
+    for (auto& sec : layout.sections)
+    {
+        for (size_t subIdx = 0; subIdx < sec.subsections.size(); ++subIdx)
+        {
+            auto& sub = sec.subsections[subIdx];
+            if (sub.name == "Voice")
+            {
+                constexpr size_t kKnobsPerSubsection = 9;
+                if (splitSubsectionsTo33 && sub.elements.size() >= kKnobsPerSubsection)
+                {
+                    sec.subsections.insert(sec.subsections.begin() +
+                                             static_cast<ptrdiff_t>(subIdx + 1),
+                                           Patch::Metadata::EditorLayout::EditorSubsection{
+                                               .name = "Voice 2",
+                                               .elements = { elem },
+                                           });
+                }
+                else
+                {
+                    sub.elements.push_back(elem);
+                }
+                return;
+            }
+        }
+    }
+}
+
+void injectVoiceSleepParameter(Patch::Metadata& metadata, int& outVoiceSleepParamId)
+{
+    if (!hasVoiceSectionInLayout(metadata.layoutFlat) &&
+        !hasVoiceSectionInLayout(metadata.layout23) &&
+        !hasVoiceSectionInLayout(metadata.layout33))
+    {
+        return;
+    }
+
+    const int paramId = static_cast<int>(metadata.params.size());
+    metadata.params.push_back(Patch::Metadata::Param{
+        .displayName = "Voice Sleep",
+        .defaultValue = 1.0f,
+        .minValue = 0.0f,
+        .maxValue = 1.0f,
+        .isEnum = true,
+        .valueFormatter = [](const Patch&, Patch::paramvalue_t value) -> std::string
+        { return (std::lround(value) != 0) ? "On" : "Off"; },
+    });
+    metadata.voiceSleepParamId = paramId;
+    outVoiceSleepParamId = paramId;
+
+    appendParamToVoiceSection(metadata.layoutFlat, paramId, false);
+    appendParamToVoiceSection(metadata.layout23, paramId, false);
+    appendParamToVoiceSection(metadata.layout33, paramId, true);
+}
 
 ArenaAllocator s_arena;
 std::deque<PluginRecord> s_plugins{};
@@ -1258,6 +1381,13 @@ class PsynVoiceWrapper : public InstrumentVoice
 
     void onParamChange(int paramId, Patch::optional_paramvalue_t newValue) override
     {
+        const auto* rec = pluginRecord();
+        if (rec != nullptr &&
+            (paramId == rec->voiceSleepParamId ||
+             (rec->pluginParamCount >= 0 && paramId >= rec->pluginParamCount)))
+        {
+            return;
+        }
         const PsynPluginApi* api = getActiveApi();
         if (api == nullptr || api->voice_on_param_change == nullptr)
         {
@@ -1359,6 +1489,36 @@ class PsynVoiceWrapper : public InstrumentVoice
           pluginVoice_, &pctx, outputBuffer[0].data(), outputBuffer[1].data());
     }
 
+    bool hasPostProcess() const override
+    {
+        const PsynPluginApi* api = getActiveApi();
+        return api != nullptr && api->voice_render_post_process != nullptr;
+    }
+
+    bool hasTickIdle() const override
+    {
+        const auto* rec = pluginRecord();
+        const PsynPluginApi* api = getActiveApi();
+        return rec != nullptr && rec->hasVoiceTickIdle && api != nullptr &&
+               api->voice_tick_idle != nullptr;
+    }
+
+    void tickIdle(const InstrumentVoiceContext& ctx) override
+    {
+        if (!hasTickIdle())
+        {
+            return;
+        }
+        const PsynPluginApi* api = getActiveApi();
+        ScopedPluginContext pluginScope(pluginRecord());
+        syncPatchPointer();
+        PsynVoiceContext pctx{
+            .tempo = ctx.tempo,
+            .pitchbend_range_semitones = ctx.pitchbendRangeSemitones,
+        };
+        api->voice_tick_idle(pluginVoice_, &pctx);
+    }
+
     void renderGraph(std::span<float> points) override
     {
         const PsynPluginApi* api = getActiveApi();
@@ -1374,9 +1534,13 @@ class PsynVoiceWrapper : public InstrumentVoice
     bool isActive() override
     {
         const PsynPluginApi* api = getActiveApi();
-        if (api == nullptr || api->voice_is_active == nullptr)
+        if (api == nullptr)
         {
             return false;
+        }
+        if (api->voice_is_active == nullptr)
+        {
+            return true;
         }
         ScopedPluginContext pluginScope(pluginRecord());
         return api->voice_is_active(pluginVoice_);
@@ -1517,6 +1681,7 @@ class SilentFallbackVoice : public InstrumentVoice
         metadata.instrumentTypeId = 1;
         metadata.outputChannels = Patch::Metadata::OutputChannels::kMono;
         metadata.maxVoices = 8;
+        metadata.supportsIdleSleep = true;
         metadata.params.clear();
         metadata.params.push_back(Patch::Metadata::Param{
             .displayName = "Gain",
@@ -1554,6 +1719,9 @@ std::unique_ptr<InstrumentType> createPsynInstrumentType(int pluginIdx)
               std::clamp<int>(p.header.output_channels, 0, 2));
             metadata.rendersAuxSends = (p.header.renders_aux_sends != 0);
             metadata.maxVoices = p.header.max_voices > 0 ? p.header.max_voices : 8;
+            metadata.supportsIdleSleep = p.supportsIdleSleep;
+            metadata.voiceSleepParamId = -1;
+            metadata.params.clear();
             metadata.sampleSlots.clear();
             metadata.layout33.sections.clear();
             metadata.layout23.sections.clear();
@@ -1689,6 +1857,13 @@ std::unique_ptr<InstrumentType> createPsynInstrumentType(int pluginIdx)
                         }
                     };
                 }
+
+                p.pluginParamCount = static_cast<int>(metadata.params.size());
+                p.voiceSleepParamId = -1;
+                if (p.supportsIdleSleep)
+                {
+                    injectVoiceSleepParameter(metadata, p.voiceSleepParamId);
+                }
             }
         },
         .createVoice =
@@ -1819,6 +1994,9 @@ void PsynLoader::scanAndRegister(FileSystem& synthsFs,
                              (std::strcmp(hdr.code_name, "WAVS") == 0) ||
                              (std::strcmp(hdr.code_name, "GRAIN") == 0) ||
                              (std::strcmp(hdr.code_name, "DWA") == 0);
+        rec.supportsIdleSleep = ((hdr.flags & PSYN_FLAG_SUPPORTS_IDLE_SLEEP) != 0) ||
+                                isKnownStockIdleSleepSynth(hdr.code_name);
+        rec.hasVoiceTickIdle = ((hdr.flags & PSYN_FLAG_HAS_VOICE_TICK_IDLE) != 0);
         rec.index = pluginIdx;
         rec.typeId = assignedId;
         std::strncpy(rec.filename, fname.c_str(), sizeof(rec.filename) - 1);

@@ -9,6 +9,7 @@ class UsbAudioImpl : public UsbAudio
     virtual void beginFillData() override;
     virtual void fillChannelData(void* samples, int count, int channel) override;
     virtual void finishFillData() override;
+    virtual bool isOutputActive() const override;
 };
 
 #endif /* USBAUDIOIMPL_H_ */

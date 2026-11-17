@@ -29,12 +29,8 @@ class MixerAndFxs
     };
 
     static constexpr int kExternalInputsCount = 1;
-#ifndef PLATFORM_IMX
-    static constexpr int kSendsInputsCount = 2 * kExternalInputsCount + voicesCount;
-#else
-    static constexpr int kSendsInputsCount =
-      2 * kExternalInputsCount + 2 * voicesCount + kSynthParts;
-#endif
+    static constexpr int kFirstSynthSendInput = 2 * kExternalInputsCount + 2 * voicesCount;
+    static constexpr int kSendsInputsCount = kFirstSynthSendInput + kSynthParts;
     static constexpr int kTrackMixerOutputsCount = 1;
     static constexpr int kTrackAndSendsMixerInputs =
       kTrackMixerOutputsCount + kExternalInputsCount + FxType::kFxCount;

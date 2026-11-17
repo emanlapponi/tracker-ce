@@ -11,9 +11,19 @@ AUDIO_CORE_RAM void AudioOutputStream::update()
         return;
     }
 
-    audio_block_t* blockLeft = receiveReadOnly(kOutChannels * source[0]); // input 0 = left channel
-    audio_block_t* blockRight =
-      receiveReadOnly(kOutChannels * source[1] + 1); // input 1 = right channel
+    const int leftIdx = kOutChannels * source[0];
+    const int rightIdx = kOutChannels * source[1] + 1;
+
+    audio_block_t* blockLeft = receiveReadOnly(leftIdx);   // input 0 = left channel
+    audio_block_t* blockRight = receiveReadOnly(rightIdx); // input 1 = right channel
+
+    for (int ch = 0; ch < kOutChannels * kSources; ch++)
+    {
+        if (ch == leftIdx || ch == rightIdx)
+            continue;
+        if (audio_block_t* stale = receiveReadOnly(ch))
+            release(stale);
+    }
 
     if (blockLeft)
     {

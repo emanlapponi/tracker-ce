@@ -1,15 +1,34 @@
 #include "AudioVoice.h"
 
-#ifndef PLATFORM_IMX
-AudioVoice::AudioVoice()
+AUDIO_CORE_RAM void AudioStereoMirror::update()
 {
-    connections.push_back(new AudioConnection(&memoryPlayer, &bitDepth));
-    connections.push_back(new AudioConnection(&bitDepth, &filter));
-    connections.push_back(new AudioConnection(&filter, &amplifier));
-    connections.push_back(new AudioConnection(&amplifier, &monoToStereo));
-    connections.push_back(new AudioConnection(&amplifier, &rms));
+    audio_block_t* left = receiveReadOnly(0);
+    audio_block_t* right = stereo ? receiveReadOnly(1) : nullptr;
+    if (!stereo)
+    {
+        if (audio_block_t* stale = receiveReadOnly(1))
+        {
+            release(stale);
+        }
+    }
+
+    if (left != nullptr)
+    {
+        transmit(left, 0);
+        if (!stereo)
+        {
+            transmit(left, 1);
+        }
+        release(left);
+    }
+
+    if (stereo && right != nullptr)
+    {
+        transmit(right, 1);
+        release(right);
+    }
 }
-#else
+
 AudioVoice::AudioVoice()
 {
     for (int channel = 0; channel < VoiceChannels::kChannelsCount; channel++)
@@ -17,83 +36,42 @@ AudioVoice::AudioVoice()
         connections.push_back(new AudioConnection(&memoryPlayer[channel], &bitDepth[channel]));
         connections.push_back(new AudioConnection(&bitDepth[channel], &filter[channel]));
         connections.push_back(new AudioConnection(&filter[channel], &amplifier[channel]));
-        connections.push_back(new AudioConnection(&amplifier[channel], &panningAmplifier[channel]));
-        connections.push_back(new AudioConnection(&amplifier[channel], &rms[channel]));
+        connections.push_back(new AudioConnection(&amplifier[channel], 0, &stereoMirror, channel));
+        connections.push_back(
+          new AudioConnection(&stereoMirror, channel, &panningAmplifier[channel], 0));
+        connections.push_back(new AudioConnection(&stereoMirror, channel, &rms[channel], 0));
     }
 }
-#endif
 
-#ifndef PLATFORM_IMX
-AudioPlayMemory* AudioVoice::getMemoryPlayer()
-{
-    return &memoryPlayer;
-}
-#else
 AudioPlayMemory* AudioVoice::getMemoryPlayer(VoiceChannels channel)
 {
     return &memoryPlayer[channel];
 }
-#endif
 
-#ifndef PLATFORM_IMX
-AudioBitDepth* AudioVoice::getBitDepth()
-{
-    return &bitDepth;
-}
-#else
 AudioBitDepth* AudioVoice::getBitDepth(VoiceChannels channel)
 {
     return &bitDepth[channel];
 }
-#endif
 
-#ifndef PLATFORM_IMX
-AudioFilterStateVariable* AudioVoice::getFilter()
-{
-    return &filter;
-}
-#else
 AudioFilterStateVariable* AudioVoice::getFilter(VoiceChannels channel)
 {
     return &filter[channel];
 }
-#endif
 
-#ifndef PLATFORM_IMX
-AudioAmplifier* AudioVoice::getAmplifier()
-{
-    return &amplifier;
-}
-#else
 AudioAmplifier* AudioVoice::getAmplifier(VoiceChannels channel)
 {
     return &amplifier[channel];
 }
-#endif
 
-#ifndef PLATFORM_IMX
-MonoToStereo* AudioVoice::getMonoToStereo()
-{
-    return &monoToStereo;
-}
-#else
 AudioAmplifier* AudioVoice::getPanningAmplifier(VoiceChannels channel)
 {
     return &panningAmplifier[channel];
 }
-#endif
 
-#ifndef PLATFORM_IMX
-AudioAnalyzeRMS* AudioVoice::getRMS()
-{
-    return &rms;
-}
-#else
 AudioAnalyzeRMS* AudioVoice::getRMS(VoiceChannels channel)
 {
     return &rms[channel];
 }
-#endif
 
 envelopeGenerator* AudioVoice::getEnvelopeGenerator(EnvelopeGeneratorType type)
 {

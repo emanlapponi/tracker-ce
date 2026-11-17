@@ -21,8 +21,10 @@ extern "C" {
 
 #define PSYN_MAGIC 0x4E595350u /* "PSYN" in little-endian */
 #define PSYN_API_VERSION 1u
-#define PSYN_FLAG_HAS_SAMPLE_SLOTS 0x0001u /* Set in PsynHeader::flags if engine uses SampleSlots */
-#define PSYN_FLAG_AUDIO_INPUT      0x0002u /* Set in PsynHeader::flags if engine provides voice_render_audio_in */
+#define PSYN_FLAG_HAS_SAMPLE_SLOTS 0x0001u    /* Set in PsynHeader::flags if engine uses SampleSlots */
+#define PSYN_FLAG_SUPPORTS_IDLE_SLEEP 0x0002u /* Set in PsynHeader::flags if engine supports Voice Sleep */
+#define PSYN_FLAG_HAS_VOICE_TICK_IDLE 0x0004u /* Set in PsynHeader::flags if PsynPluginApi appends voice_tick_idle */
+#define PSYN_FLAG_AUDIO_INPUT 0x0008u /* Set in PsynHeader::flags if engine provides voice_render_audio_in */
 
 /**
  * Binary header at byte offset 0 of every .psyn file on SD card (/Synths/<NAME>.psyn).
@@ -255,6 +257,9 @@ typedef struct PsynPluginApi
                                       float* out_left,
                                       float* out_right);
     void (*voice_render_graph)(void* voice, float* out_points, int count);
+    /* Return true while the voice is actively producing sound (used for voice allocation/stealing
+     * and, when PSYN_FLAG_SUPPORTS_IDLE_SLEEP is set, to sleep idle voices). If NULL, the host
+     * treats the voice as active. */
     bool (*voice_is_active)(void* voice);
     bool (*voice_handles_note)(void* voice, uint8_t note);
     bool (*voice_handles_any_note)(void* voice);
@@ -263,7 +268,15 @@ typedef struct PsynPluginApi
     void (*voice_clear_previous_notes)(void* voice);
     void (*voice_reset)(void* voice);
 
-    /* Appended for engines with PSYN_FLAG_AUDIO_INPUT; older engines end at voice_reset */
+    /* Optional extension (only present when PSYN_FLAG_HAS_VOICE_TICK_IDLE is set in PsynHeader::flags):
+     * Advances idle-voice state (e.g., free-running LFO phase, modulation counters) for one audio block
+     * without rendering audio, called when Voice Sleep is Off and voice_is_active(voice) is false.
+     * If NULL (with PSYN_FLAG_HAS_VOICE_TICK_IDLE set) or flag unset, host falls back to voice_render_audio
+     * when Voice Sleep is Off. */
+    void (*voice_tick_idle)(void* voice, const PsynVoiceContext* ctx);
+    /* Optional extension (only present when PSYN_FLAG_AUDIO_INPUT is set in PsynHeader::flags):
+     * Renders the voice from host audio input (mixer bus / sidechain). Host reads each appended slot
+     * based on its flag; older engines end at voice_reset. */
     void (*voice_render_audio_in)(void* voice,
                                   const PsynVoiceContext* ctx,
                                   const PsynAudioInput* in,

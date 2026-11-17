@@ -53,6 +53,11 @@ bool cFileManager::loadProjectFileFormFileStruct(strMtProject* project, strProje
     if (pFile->projectDataAndHeader.projectHeader.type != fileTypeProject)
         return false;
 
+    // Structure versions start at 1. translateProject() calls one function per version
+    // from a table whose first entry belongs to version 1.
+    if (pFile->projectDataAndHeader.projectHeader.fileStructureVersion[0] == 0)
+        return false;
+
     uint16_t projectFileSize = pFile->projectDataAndHeader.projectHeader.size;
     if (projectFileSize < sizeof(strProjectFileHeader) + sizeof(uint32_t) ||
         projectFileSize > sizeof(strProjectFile))
@@ -137,6 +142,20 @@ bool cFileManager::loadProjectFileFormFileStruct(strMtProject* project, strProje
         projectPatchfromProjectFile[PATCH_SIZE - PROJECT_NAME_SIZE - 1] = 0;
     }
 
+    // The audio interrupt runs the sequencer on these values from the moment they are
+    // copied, before loadProjectValues() checks the project, and a tempo that is not a
+    // positive number keeps it in its tick loop for ever. Patterns are numbered from 1;
+    // pattern 0 becomes index 255 of the 255-entry pattern bitmasks.
+    strMtValues& fileValues = pFile->projectDataAndHeader.project.values;
+    if (!(fileValues.globalTempo > 0.0f && fileValues.globalTempo <= 1000.0f))
+    {
+        fileValues.globalTempo = DEFAULT_TEMPO;
+    }
+    if (fileValues.actualPattern < PATTERN_INDEX_MIN)
+    {
+        fileValues.actualPattern = PATTERN_INDEX_MIN;
+    }
+
     memcpy(&project->song, &pFile->projectDataAndHeader.project.song, sizeof(strSong));
     memcpy(&project->values, &pFile->projectDataAndHeader.project.values, sizeof(strMtValues));
     //*proj=pFile.projectDataAndHeader.project;
@@ -149,7 +168,10 @@ bool cFileManager::writeProjectFileToFileStruct(strMtProject* project, strProjec
     memcpy(&pFile->projectDataAndHeader.project.song, &project->song, sizeof(strSong));
     memcpy(&pFile->projectDataAndHeader.project.values, &project->values, sizeof(strMtValues));
     strcpy(pFile->projectDataAndHeader.project.projectName, currentProjectName);
-    strcpy(pFile->projectDataAndHeader.project.projectPath, currentProjectPatch);
+    // The path of the open project can be longer than its field in the project file.
+    strncpy(pFile->projectDataAndHeader.project.projectPath,
+            currentProjectPatch,
+            PATCH_SIZE - PROJECT_NAME_SIZE - 1);
     pFile->projectDataAndHeader.project.projectName[PROJECT_NAME_SIZE - 1] = 0;
     pFile->projectDataAndHeader.project.projectPath[PATCH_SIZE - PROJECT_NAME_SIZE - 1] = 0;
 

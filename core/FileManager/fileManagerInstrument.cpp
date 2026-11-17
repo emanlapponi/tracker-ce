@@ -327,8 +327,10 @@ bool cFileManager::loadSampleData(int idx,
     }
     else if (sampleLoadStep == 2) // old instrument/sample load
     {
-        loadStatus = fileTransfer.loadSampleToMemory(
-          samplePath, mtProject.instrument[idx].sample.address, currentSampleSamplesCount);
+        loadStatus = fileTransfer.loadSampleToMemory(samplePath,
+                                                     mtProject.instrument[idx].sample.address,
+                                                     mtProject.instrument[idx].sample.length,
+                                                     currentSampleSamplesCount);
     }
     else if (sampleLoadStep == 3) // save old sample type to new instrument in workspace
     {
@@ -753,6 +755,10 @@ bool cFileManager::loadInstrumentFormFileStruct(strInstrument* instrument,
 
         versionRecovery.translateinstrument(fileVersion, INSTRUMENT_FILE_VERSION, instrumentFile);
     }
+
+    // The name is copied and printed as a string everywhere, and nothing else makes sure that
+    // the 32 bytes read from the file end in a terminator.
+    instrumentFile->instrumentDataAndHeader.instrument.sample.file_name[SAMPLE_NAME_SIZE] = 0;
 
     instrumentFileDataOffsetOut = validation.dataOffset;
 

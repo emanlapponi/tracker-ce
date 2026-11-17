@@ -1,6 +1,7 @@
 #include "PlatformImpl.h"
 #include "Tracker.h"
 #include "config.h"
+#include "usb_audio.h"
 
 void initHardware(PlatformImpl* platform,
                   const char* version,
@@ -21,15 +22,22 @@ void updateBuffers(void* bufLeft, void* bufRight)
 {
     if (trackerInstance != nullptr)
     {
+        UsbAudio* usbAudio = platform.getUsbAudio();
+        usbAudio->beginFillData();
         trackerInstance->updateAudioBuffers(bufLeft, bufRight, kAudioBlockSamples);
+        usbAudio->finishFillData();
     }
 }
+
+static uint32_t s_usbRxBlock[kAudioBlockSamples] __attribute__((section(".noinit.$EXTERNAL_RAM"), aligned(4)));
 
 void updateInputBuffers(void* data)
 {
     if (trackerInstance != nullptr)
     {
-        trackerInstance->updateInputAudioBuffers(data, nullptr, kAudioBlockSamples);
+        const void* usbData = usb_audio_pull_rx_block(s_usbRxBlock, kAudioBlockSamples);
+        trackerInstance->updateInputAudioBuffers(
+          data, const_cast<void*>(usbData), kAudioBlockSamples);
     }
 }
 

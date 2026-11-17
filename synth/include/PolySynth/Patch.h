@@ -238,6 +238,8 @@ class Patch : private boost::noncopyable
         bool macrosAffectParamCC = false;
         bool rendersAuxSends = false;
         int maxVoices = std::numeric_limits<int>::max();
+        bool supportsIdleSleep = false;
+        int voiceSleepParamId = -1;
 
         // 3 columns / 3 rows editor layout
         EditorLayout layout33 = {};

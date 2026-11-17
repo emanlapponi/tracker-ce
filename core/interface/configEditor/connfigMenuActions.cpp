@@ -79,13 +79,6 @@ void setDisplayFont()
     mtInterface.activateModule(&configEditor, 0);
 }
 
-void setLineInOutType()
-{
-    if (mtConfig.general.lineInOutType > 2)
-        mtConfig.general.lineInOutType = 2;
-    engine.setLineInOutType(mtConfig.general.lineInOutType);
-}
-
 void setPadsBrightness()
 {
     if (mtConfig.general.padsBrightness > 2)
@@ -187,9 +180,7 @@ void usbAudioChange()
             usb->setClassState(Usb::ClassType::kAudioOut, false);
             break;
     }
-#ifdef PLATFORM_IMX
     engine.refreshOutputSourceOutsideTheRecorder();
-#endif
     usb->reset();
 }
 

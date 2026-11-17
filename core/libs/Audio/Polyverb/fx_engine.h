@@ -232,6 +232,22 @@ class FxEngine
             Write2(d, 0, scale);
         }
 
+#ifdef AUDIO_NULL_IS_SILENCE
+        // Write(), and the written value is added to the activity flag
+        template<typename D>
+        inline void WriteQ(D& d, float scale)
+        {
+            nonzero_ |= static_cast<uint32_t>(DataType<format>::Compress(accumulator_));
+            Write(d, 0, scale);
+        }
+        template<typename D>
+        inline void Write2Q(D& d, float scale)
+        {
+            nonzero_ |= static_cast<uint32_t>(DataType<format>::Compress(accumulator_));
+            Write2(d, 0, scale);
+        }
+#endif
+
         template<typename D>
         inline void WriteAllPass(D& d, int32_t offset, float scale)
         {
@@ -371,6 +387,9 @@ class FxEngine
         }
 
       public:
+#ifdef AUDIO_NULL_IS_SILENCE
+        uint32_t nonzero_; // OR of everything written to the line buffers since the caller cleared it
+#endif
         float accumulator_;
         float previous_read_;
         float lfo_value_[2];
@@ -416,6 +435,31 @@ class FxEngine
             c->lfo_value_[1] = lfo_[1].value();
         }
     }
+
+#ifdef AUDIO_NULL_IS_SILENCE
+    // n samples of Start() without a Context: the write pointers and the LFO move as they would (for a block of silence in a reverb
+    // whose line buffers are all zero, nothing else changes)
+    inline void Skip(size_t n)
+    {
+        for (size_t i = 0; i < n; i++)
+        {
+            --write_ptr_;
+            if (write_ptr_ < 0)
+            {
+                write_ptr_ += size;
+            }
+            --write_ptr2_;
+            if (write_ptr2_ < 0)
+            {
+                write_ptr2_ += size;
+            }
+            if ((write_ptr_ & 30) == 0)
+            {
+                lfo_[1].Next();
+            }
+        }
+    }
+#endif
 
     inline void StartNoLFO(Context* c)
     {

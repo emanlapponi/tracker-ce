@@ -35,6 +35,18 @@
 
 #include "fx_engine.h"
 #include "util.h"
+#ifdef AUDIO_NULL_IS_SILENCE
+#include <algorithm>
+#endif
+
+// The two writes that carry all the feedback energy of the loop also feed the quiet detector (AUDIO_NULL_IS_SILENCE, see Process()).
+#ifdef AUDIO_NULL_IS_SILENCE
+#define REVERB_WRITE_TRACKED(c, d, s)  c.WriteQ(d, s)
+#define REVERB_WRITE2_TRACKED(c, d, s) c.Write2Q(d, s)
+#else
+#define REVERB_WRITE_TRACKED(c, d, s)  c.Write(d, s)
+#define REVERB_WRITE2_TRACKED(c, d, s) c.Write2(d, s)
+#endif
 
 class Reverb
 {
@@ -45,6 +57,9 @@ class Reverb
     void Init(uint16_t* buffer, uint16_t* buffer2)
     {
         engine_.Init(buffer, buffer2);
+#ifdef AUDIO_NULL_IS_SILENCE
+        quiet_samples_ = 0;
+#endif
         engine_.SetLFOFrequency(LFO_1, 0.5f / 32000.0f);
         engine_.SetLFOFrequency(LFO_2, 0.3f / 32000.0f);
         lp_ = 0.7f;
@@ -85,6 +100,9 @@ class Reverb
         E2::DelayLine<Memory2, 1> dap2b;
         E2::DelayLine<Memory2, 2> del2;
         E::Context c;
+#ifdef AUDIO_NULL_IS_SILENCE
+        c.nonzero_ = 0;
+#endif
 
         const float kap = diffusion_;
         const float klp = lp_;
@@ -135,7 +153,7 @@ class Reverb
             c.WriteAllPass(dap1a, kap);
             c.Read(dap1b TAIL, kap);
             c.WriteAllPass(dap1b, -kap);
-            c.Write(del1, 2.0f);
+            REVERB_WRITE_TRACKED(c, del1, 2.0f);
             c.Write(wet, 0.0f);
 
             delta = (wet * 32768 - *left) * amount;
@@ -150,7 +168,7 @@ class Reverb
             c.WriteAllPass2(dap2a, -kap);
             c.Read2(dap2b TAIL, -kap);
             c.WriteAllPass2(dap2b, kap);
-            c.Write2(del2, 2.0f);
+            REVERB_WRITE2_TRACKED(c, del2, 2.0f);
             c.Write(wet, 0.0f);
 
             delta = (wet * 32768 - *right) * amount;
@@ -165,7 +183,37 @@ class Reverb
         lp_decay_1_ = lp_1;
         lp_decay_2_ = lp_2;
         last_update_delta_ = delta_sum / size;
+#ifdef AUDIO_NULL_IS_SILENCE
+        // Quiet block = the two long lines of the feedback loop (del1, del2: all the recirculating energy passes through them, at the
+        // latest after the longest line, 6312 samples) were written with values below 1 LSB of 16 bit (they compress to 0), and the three
+        // low pass states are below 1 LSB. AudioEffectPolyverb::update() resets the count when the input has sound. kQuietSamples such
+        // samples in a row (more than the longest line of the input path, predelay included, 5000 + 1210 samples) and nothing above 1 LSB
+        // is left to ring.
+        constexpr float kTiny = 1.0f / 32768.0f;
+        const bool tiny = lp_0 < kTiny && lp_0 > -kTiny && lp_1 < kTiny && lp_1 > -kTiny && lp_2 < kTiny && lp_2 > -kTiny;
+        quiet_samples_ = (c.nonzero_ == 0 && tiny) ? std::min<uint32_t>(quiet_samples_ + size, kQuietSamples) : 0;
+#endif
     }
+
+#ifdef AUDIO_NULL_IS_SILENCE
+    // true when the whole reverb state is below 1 LSB of 16 bit: a block of silent input then gives silent output. Process() can be
+    // skipped, the output is zero (to within 1 LSB of the stock tail)
+    inline bool IsQuiet() const { return quiet_samples_ >= kQuietSamples; }
+
+    // a block with sound went in: the line buffers are about to fill
+    inline void ClearQuiet() { quiet_samples_ = 0; }
+
+    // The skipped block: the low pass states (below 1 LSB) and the activity meter go to zero, the line buffers are already zero. The
+    // write position and the LFO phase move as Process() would move them, so the next block with sound modulates as the stock reverb does.
+    inline void SkipQuiet(size_t size)
+    {
+        engine_.Skip(size);
+        lp_decay_0_ = 0;
+        lp_decay_1_ = 0;
+        lp_decay_2_ = 0;
+        last_update_delta_ = 0;
+    }
+#endif
 
     inline void SetAmount(float amount) { amount_ = amount; }
 
@@ -185,6 +233,9 @@ class Reverb
     inline void Reset()
     {
         engine_.Reset();
+#ifdef AUDIO_NULL_IS_SILENCE
+        quiet_samples_ = kQuietSamples;
+#endif
         lp_decay_0_ = 0;
         lp_decay_1_ = 0;
         lp_decay_2_ = 0;
@@ -201,6 +252,10 @@ class Reverb
     E engine_;
 
     static constexpr size_t predelay_buffer_size_ = 5000;
+#ifdef AUDIO_NULL_IS_SILENCE
+    static constexpr uint32_t kQuietSamples = 16384; // one buffer length, the longest line is 15,591 (E) and 11,037 (E2) samples
+    uint32_t quiet_samples_ = 0;
+#endif
 
     float amount_;
 

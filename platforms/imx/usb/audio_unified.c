@@ -168,6 +168,8 @@ int dataBuffSize(DataBuff* buf)
     return buf->wridx - buf->rdidx;
 }
 
+static bool usbAudioBlockActive = false;
+
 void resetUsbAudioBuffer()
 {
 #if defined(USB_LOG_ENABLED) && USB_LOG_ENABLED == 1
@@ -184,17 +186,24 @@ void resetUsbAudioBuffer()
     audioRecBuffer.rdidx = 0;
     audioRecBuffer.wridx = 0;
     usbIsoReady = false;
+    usbAudioBlockActive = false;
     audioReady = false;
+}
+
+bool isUsbAudioOutputActive(void)
+{
+    return usbAudioBlockActive && usbIsoReady && g_deviceAudioComposite != NULL &&
+           g_deviceAudioComposite->audioUnified.attach != 0;
 }
 
 void beginUsbAudioFill()
 {
-    if (!usbIsoReady)
-        return;
-
     USB_DeviceIsrDisable();
 
-    if (audioToSend > (AUDIO_BUFFERS - 1) * SAMPLES_CODEC)
+    const bool active = usbIsoReady && g_deviceAudioComposite != NULL &&
+                        g_deviceAudioComposite->audioUnified.attach != 0;
+    usbAudioBlockActive = active;
+    if (active && audioToSend > (AUDIO_BUFFERS - 1) * SAMPLES_CODEC)
         resetUsbAudioBuffer();
 
     USB_DeviceIsrEnable();
@@ -205,12 +214,12 @@ void beginUsbAudioFill()
 
 void finishUsbAudioFill()
 {
-    if (!usbIsoReady)
+    if (!usbAudioBlockActive)
         return;
 
     USB_DeviceIsrDisable();
 
-    if (usbIsoReady)
+    if (usbAudioBlockActive && usbIsoReady)
     {
         if (audioReady)
         {
@@ -234,17 +243,18 @@ void finishUsbAudioFill()
             audioReady = true;
     }
 
+    usbAudioBlockActive = false;
     USB_DeviceIsrEnable();
 }
 
 void fillUsbAudioChannelData(void* data, int count, int channel)
 {
-    if (!usbIsoReady || channel >= CHANNELS_REC_COUNT)
+    if (!usbAudioBlockActive || !usbIsoReady || channel >= CHANNELS_REC_COUNT)
         return;
 
     USB_DeviceIsrDisable();
 
-    if (usbIsoReady)
+    if (usbAudioBlockActive && usbIsoReady)
     {
         for (int i = 0; i < count; i++)
         {
@@ -277,8 +287,9 @@ void updateUsbOutputBuffers(void* left, void* right, int count)
     USB_DeviceIsrEnable();
 }
 
-void updateUsbInputBuffers(void* data, int count)
+bool updateUsbInputBuffers(void* data, int count)
 {
+    bool hasData = false;
     USB_DeviceIsrDisable();
 
     if (audioPlayReady && samplesToRecv > 0)
@@ -294,13 +305,11 @@ void updateUsbInputBuffers(void* data, int count)
         deltaRecv = samplesToRecv - SAMPLES_CODEC;
         audioPlayBuffer.rdidx += SAMPLES_PLAY_COUNT;
         audioPlayBuffer.rdidx %= SAMPLES_PLAY_COUNT * AUDIO_BUFFERS;
-    }
-    else
-    {
-        memset(data, 0, 2 * count * sizeof(int16_t));
+        hasData = true;
     }
 
     USB_DeviceIsrEnable();
+    return hasData;
 }
 /*!
  * @brief device Audio callback function.

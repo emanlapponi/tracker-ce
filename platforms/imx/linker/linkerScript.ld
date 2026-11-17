@@ -118,6 +118,7 @@ SECTIONS
         *libPolySynth.a:*PatchImpl_perf*.o(.text*)
         *libPolySynth.a:*InstrumentImpl*.o(.text*)
         *lib_a-memcpy-stub.o(.text*)
+        *(.fastmem_ram_functions)
         . = ALIGN(4) ;
         PROVIDE(__end_data_RAM2 = .) ;
         PROVIDE(__end_data_SRAM_ITC = .) ;

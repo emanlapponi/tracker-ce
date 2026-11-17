@@ -119,10 +119,16 @@ SECTIONS
 		*(.noinit*)
 	} > RAM
 
-	.bss : {
+	.bss_sram_l (NOLOAD) : {
 		. = ALIGN(4);
 		_sbss = .;
 		__bss_start__ = .;
+		*(EXCLUDE_FILE(*libTracker.a:*) .bss*)
+		*(EXCLUDE_FILE(*libTracker.a:*) COMMON)
+		. = ALIGN(4);
+	} > RAM
+
+	.bss 0x20000000 (NOLOAD) : {
 		*(.bss*)
 		*(COMMON)
 		. = ALIGN(4);
@@ -171,6 +177,8 @@ SECTIONS
     _image_end = LOADADDR(.data) + SIZEOF(.data);
     _image_size = _image_end - _image_start;
 }
+
+ASSERT((ADDR(.bss_sram_l) + SIZEOF(.bss_sram_l)) <= 0x20000000, "Platform .bss overflowed SRAM_L 0x20000000 boundary");
 
 
 

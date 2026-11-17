@@ -61,10 +61,8 @@ class audioEngine
     void connectVoiceToExportQueue(AudioVoice* voice, ExportQueues* exportQueues, int idx);
     void connectMixerToExportQueue(MixerAndFxs<kVoices>* mixerAndFxs, ExportQueues* exportQueues);
     void connectOutputToExportQueue(AudioOutput* output, ExportQueues* exportQueues);
-#ifdef PLATFORM_IMX
     void refreshOutputSourceOutsideTheRecorder();
     void forceUsbGainOutsideTheRecorder();
-#endif
     void refreshTrackVolume();
     void refreshReverbVolume();
     void refreshDelayVolume();
@@ -142,6 +140,7 @@ class audioEngine
     void soloDelaySend(uint8_t state);
     void soloReverbSend(uint8_t state);
     void clearDelay();
+    void resetDelay();
     void clearReverb();
     void resetLimiter();
     void performanceModeEndAll();
@@ -176,7 +175,6 @@ class audioEngine
     void setHeadroomEnable(bool enabled);
     void setSnapToZeroEnable(bool enabled);
     void setSaturationType(SaturationType type);
-#ifdef PLATFORM_IMX
     enum OutputSourceType
     {
         kRegularMix,
@@ -184,7 +182,6 @@ class audioEngine
     };
 
     void setOutputSource(OutputSourceType source);
-#endif
     void detachUpdateTimer();
     void attachUpdateTimer();
 
@@ -286,6 +283,7 @@ class playerEngine
                    uint8_t fx2_val); // tylko ten note on do nut w sequencerze
     void noteOff(int8_t option = -4);
     void setStepVelocity(int8_t velocity);
+    uint8_t getMostSignificantVolume();
     void clean();
 
     void setInterpolationEnable(bool value);
@@ -589,11 +587,8 @@ class playerEngine
     friend audioEngine;
 
     AudioVoice audioVoice;
-#ifndef PLATFORM_IMX
-    MonoToStereo* monoToStereoPtr;
-#else
     std::vector<AudioAmplifier*> panningAmplifierPtr;
-#endif
+    bool voiceIsStereo = false;
     std::vector<AudioPlayMemory*> playMemPtr;
     std::vector<AudioAmplifier*> ampPtr;
     std::vector<AudioFilterStateVariable*> filterPtr;
@@ -640,7 +635,6 @@ class playerEngine
     //**********************FUNKCJE POMOCNICZE
     uint8_t isFxVelocity(uint8_t fx_id);
     float getMostSignificantAmount();
-    uint8_t getMostSignificantVolume();
     void initEnvelopesParameters(uint8_t n, envelopeGenerator::strEnv* env);
     void setSyncParamsLFO(uint8_t type);
     void setSyncParamsAmpLFO();

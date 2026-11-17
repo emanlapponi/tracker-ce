@@ -6,8 +6,9 @@
 class AudioInputStream : public AudioStream
 {
   public:
-    AudioInputStream()
+    explicit AudioInputStream(bool silentWithoutData = false)
       : AudioStream(0, NULL)
+      , silentWithoutData(silentWithoutData)
     {
     }
 
@@ -16,6 +17,7 @@ class AudioInputStream : public AudioStream
 
   private:
     void* data = nullptr;
+    bool silentWithoutData;
 };
 
 #endif /* LIBS_AUDIO_INPUT_H_ */

@@ -18,9 +18,11 @@ class AudioMux : public AudioStream
     }
     virtual void update(void);
     void setOut(uint8_t channel);
+    void setEnabled(bool enabled);
 
   private:
     uint8_t outChannel = 0;
+    bool muxEnabled = true;
     audio_block_t* inputQueueArray[MUX_SIZE];
 };
 

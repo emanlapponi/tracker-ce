@@ -261,6 +261,8 @@ class BaseSynthVoice : public InstrumentVoice
         synth.renderFx(renderContext, buffer[0]);
     };
 
+    bool hasPostProcess() const final { return true; }
+
   protected:
     static constexpr int kPitchBendRangeSemitones = 2;
 

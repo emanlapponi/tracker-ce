@@ -4,6 +4,7 @@
 #include "fsl_sd.h"
 #include "fsl_sd_disk.h"
 #include "log.h"
+#include "usb_msc.h"
 #include "util_string.h"
 #include "wiring.h"
 #include <algorithm>
@@ -67,6 +68,7 @@ void FileSystemImpl::update(bool forcedUpdate)
             {
                 LOG("SD card init.");
                 cardInitializedSuccessfully = SD.init();
+                usb_msc_set_media_ready(cardInitializedSuccessfully ? 1 : 0);
 
                 if (cardInitializedSuccessfully)
                 {
@@ -90,6 +92,8 @@ void FileSystemImpl::update(bool forcedUpdate)
     {
         LOG("\nSD card ejected.");
 
+        cardInitializedSuccessfully = false;
+        usb_msc_set_media_ready(0);
         SD.stop();
 
         if (cardStateChangeCallback != nullptr)
@@ -114,9 +118,17 @@ void FileSystemImpl::setMountEventCallback(CardStateChangeCallback funct)
 
 bool FileSystemImpl::remount()
 {
-    // Nothing else writes to the card here: this platform has no USB storage
-    // mode.
-    return false;
+    if (!lastCardInsertState)
+    {
+        cardInitializedSuccessfully = false;
+        usb_msc_set_media_ready(0);
+        return false;
+    }
+
+    SD.stop();
+    cardInitializedSuccessfully = SD.init();
+    usb_msc_set_media_ready(cardInitializedSuccessfully ? 1 : 0);
+    return cardInitializedSuccessfully;
 }
 
 bool FileSystemImpl::exists(const char* path)

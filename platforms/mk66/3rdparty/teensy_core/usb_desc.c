@@ -36,6 +36,7 @@
 #include "usb_names.h"
 #include "kinetis.h"
 #include "avr_functions.h"
+#include <string.h>
 
 // USB Descriptors are binary data which the USB host reads to
 // automatically detect a USB device's capabilities.  The format
@@ -1289,7 +1290,7 @@ static uint8_t config_descriptor[CONFIG_DESC_SIZE] = {
 	9, 					// bLength
 	5, 					// bDescriptorType, 5 = ENDPOINT_DESCRIPTOR
 	AUDIO_TX_ENDPOINT | 0x80,		// bEndpointAddress
-	0x09, 					// bmAttributes = isochronous, adaptive
+	0x05, 					// bmAttributes = isochronous, asynchronous
 	LSB(AUDIO_TX_SIZE), MSB(AUDIO_TX_SIZE),	// wMaxPacketSize
 	1,			 		// bInterval, 1 = every frame
 	0,					// bRefresh
@@ -1641,6 +1642,190 @@ const uint8_t usb_endpoint_config_table[NUM_ENDPOINTS] =
 #endif
 };
 
+
+#ifdef USB_DYNAMIC_CONFIG
+
+#define MAX_DYNAMIC_CONFIG_DESC_SIZE 384
+
+static uint8_t active_device_descriptor[18];
+static uint8_t active_config_descriptor[MAX_DYNAMIC_CONFIG_DESC_SIZE];
+static uint8_t active_endpoint_config_table[NUM_ENDPOINTS];
+static usb_descriptor_list_t active_descriptor_list[10];
+static uint8_t active_usb_flags = USB_CFG_MIDI | USB_CFG_SERIAL | USB_CFG_RAWHID;
+
+const uint8_t *usb_active_endpoint_config_table = usb_endpoint_config_table;
+const usb_descriptor_list_t *usb_active_descriptor_list = usb_descriptor_list;
+uint8_t usb_audio_ctrl_interface = 0xFF;
+uint8_t usb_audio_tx_interface = 0xFF;
+uint8_t usb_audio_rx_interface = 0xFF;
+uint8_t usb_msc_interface = 0xFF;
+
+uint8_t usb_desc_get_flags(void)
+{
+	return active_usb_flags;
+}
+
+void usb_desc_configure(uint8_t flags)
+{
+	uint8_t *p = active_config_descriptor;
+	uint8_t num_ifaces = 0;
+	uint16_t rawhid_offset = 0;
+	uint8_t list_idx = 0;
+
+	active_usb_flags = flags;
+	memset(active_endpoint_config_table, ENDPOINT_UNUSED, sizeof(active_endpoint_config_table));
+	memcpy(active_device_descriptor, device_descriptor, sizeof(active_device_descriptor));
+
+	usb_audio_ctrl_interface = 0xFF;
+	usb_audio_tx_interface = 0xFF;
+	usb_audio_rx_interface = 0xFF;
+	usb_msc_interface = 0xFF;
+
+	// Use unique bcdDevice per configuration so hosts do not cache stale descriptors
+	active_device_descriptor[12] = flags;
+	active_device_descriptor[13] = 0x02;
+
+	// 9-byte Configuration Descriptor header (wTotalLength & bNumInterfaces patched at end)
+	memcpy(p, config_descriptor, 9);
+	p += 9;
+
+	if (flags & USB_CFG_MSC) {
+		active_device_descriptor[4] = 0x00; // bDeviceClass
+		active_device_descriptor[5] = 0x00; // bDeviceSubClass
+		active_device_descriptor[6] = 0x00; // bDeviceProtocol
+
+		usb_msc_interface = 0;
+		num_ifaces = 1;
+
+		// Standard Mass Storage Interface Descriptor (Bulk-Only Transport, SCSI transparent)
+		const uint8_t msc_desc[] = {
+			9, 4, 0, 0, 2, 0x08, 0x06, 0x50, 0,
+			7, 5, MSC_TX_ENDPOINT | 0x80, 0x02, MSC_EP_SIZE, 0, 0,
+			7, 5, MSC_RX_ENDPOINT,        0x02, MSC_EP_SIZE, 0, 0,
+		};
+		memcpy(p, msc_desc, sizeof(msc_desc));
+		p += sizeof(msc_desc);
+
+		active_endpoint_config_table[MSC_TX_ENDPOINT - 1] = ENDPOINT_TRANSMIT_ONLY;
+		active_endpoint_config_table[MSC_RX_ENDPOINT - 1] = ENDPOINT_RECEIVE_ONLY;
+	} else {
+		// Composite IAD device
+		active_device_descriptor[4] = 0xEF;
+		active_device_descriptor[5] = 0x02;
+		active_device_descriptor[6] = 0x01;
+
+		// Base interfaces: CDC (0, 1), MIDI (2), RawHID (3)
+		if (flags & USB_CFG_SERIAL) {
+			memcpy(p, config_descriptor + CDC_IAD_DESCRIPTOR_POS,
+			       CDC_IAD_DESCRIPTOR_SIZE + CDC_DATA_INTERFACE_DESC_SIZE);
+			p += CDC_IAD_DESCRIPTOR_SIZE + CDC_DATA_INTERFACE_DESC_SIZE;
+			active_endpoint_config_table[CDC_TX_ENDPOINT - 1] = ENDPOINT_TRANSMIT_ONLY;
+			active_endpoint_config_table[CDC_RX_ENDPOINT - 1] = ENDPOINT_RECEIVE_ONLY;
+			active_endpoint_config_table[CDC_ACM_ENDPOINT - 1] = ENDPOINT_TRANSMIT_ONLY;
+			num_ifaces += 2;
+		}
+		if (flags & USB_CFG_MIDI) {
+			memcpy(p, config_descriptor + MIDI_INTERFACE_DESC_POS, MIDI_INTERFACE_DESC_SIZE);
+			p += MIDI_INTERFACE_DESC_SIZE;
+			active_endpoint_config_table[MIDI_TX_ENDPOINT - 1] = ENDPOINT_TRANSMIT_ONLY;
+			active_endpoint_config_table[MIDI_RX_ENDPOINT - 1] = ENDPOINT_RECEIVE_ONLY;
+			num_ifaces += 1;
+		}
+		if (flags & USB_CFG_RAWHID) {
+			rawhid_offset = (uint16_t)(p - active_config_descriptor) + 9;
+			memcpy(p, config_descriptor + RAWHID_INTERFACE_DESC_POS, RAWHID_INTERFACE_DESC_SIZE);
+			p += RAWHID_INTERFACE_DESC_SIZE;
+			active_endpoint_config_table[RAWHID_TX_ENDPOINT - 1] = ENDPOINT_TRANSMIT_ONLY;
+			active_endpoint_config_table[RAWHID_RX_ENDPOINT - 1] = ENDPOINT_RECEIVE_ONLY;
+			num_ifaces += 1;
+		}
+
+		// Optional UAC1 Audio (2ch Out and/or 2ch In @ 44.1 kHz, 16-bit)
+		if (flags & (USB_CFG_AUDIO_OUT | USB_CFG_AUDIO_IN)) {
+			const uint8_t has_out = (flags & USB_CFG_AUDIO_OUT) != 0;
+			const uint8_t has_in  = (flags & USB_CFG_AUDIO_IN) != 0;
+
+			usb_audio_ctrl_interface = AUDIO_INTERFACE;
+			if (has_out && has_in) {
+				usb_audio_tx_interface = AUDIO_INTERFACE + 1;
+				usb_audio_rx_interface = AUDIO_INTERFACE + 2;
+				memcpy(p, config_descriptor + AUDIO_INTERFACE_DESC_POS, AUDIO_INTERFACE_DESC_SIZE);
+				p += AUDIO_INTERFACE_DESC_SIZE;
+				num_ifaces += 3;
+			} else if (has_out) {
+				usb_audio_tx_interface = AUDIO_INTERFACE + 1;
+				// IAD (8) + AC (9) + AC Header 1-iface (9) + InTerm1 (12) + OutTerm2 (9)
+				const uint8_t ac_out[] = {
+					8, 11, AUDIO_INTERFACE, 2, 0x01, 0x01, 0x00, 0,
+					9, 4, AUDIO_INTERFACE, 0, 0, 1, 1, 0, 0,
+					9, 0x24, 0x01, 0x00, 0x01, 30, 0, 1, (uint8_t)(AUDIO_INTERFACE + 1),
+					12, 0x24, 0x02, 1, 0x02, 0x06, 0, 2, 0x03, 0x00, 0, 0,
+					9, 0x24, 0x03, 2, 0x01, 0x01, 0, 1, 0,
+				};
+				memcpy(p, ac_out, sizeof(ac_out));
+				p += sizeof(ac_out);
+				// AS TX Alt0 (9) + Alt1 (9+7+11+9+7 = 43) = 52 bytes from full audio desc
+				const uint16_t tx_as_off = AUDIO_INTERFACE_DESC_POS + 8 + 9 + 10 + 12 + 9 + 12 + 10 + 9;
+				const uint16_t tx_as_len = 9 + 9 + 7 + 11 + 9 + 7;
+				memcpy(p, config_descriptor + tx_as_off, tx_as_len);
+				p += tx_as_len;
+				num_ifaces += 2;
+			} else { // has_in only
+				usb_audio_rx_interface = AUDIO_INTERFACE + 1;
+				// IAD (8) + AC (9) + AC Header 1-iface (9) + InTerm3 (12) + Feat0x31 (10) + OutTerm4 (9)
+				const uint8_t ac_in[] = {
+					8, 11, AUDIO_INTERFACE, 2, 0x01, 0x01, 0x00, 0,
+					9, 4, AUDIO_INTERFACE, 0, 0, 1, 1, 0, 0,
+					9, 0x24, 0x01, 0x00, 0x01, 40, 0, 1, (uint8_t)(AUDIO_INTERFACE + 1),
+					12, 0x24, 0x02, 3, 0x01, 0x01, 0, 2, 0x03, 0x00, 0, 0,
+					10, 0x24, 0x06, 0x31, 0x03, 0x01, 0x01, 0x02, 0x02, 0x00,
+					9, 0x24, 0x03, 4, 0x02, 0x06, 0, 0x31, 0,
+				};
+				memcpy(p, ac_in, sizeof(ac_in));
+				p += sizeof(ac_in);
+				// AS RX Alt0 (9) + Alt1 (9+7+11+9+7+9 = 52) = 61 bytes; patch bInterfaceNumber to AUDIO_INTERFACE+1
+				const uint16_t rx_as_off = AUDIO_INTERFACE_DESC_POS + 8 + 9 + 10 + 12 + 9 + 12 + 10 + 9 + (9 + 9 + 7 + 11 + 9 + 7);
+				const uint16_t rx_as_len = 9 + 9 + 7 + 11 + 9 + 7 + 9;
+				memcpy(p, config_descriptor + rx_as_off, rx_as_len);
+				p[2] = AUDIO_INTERFACE + 1;      // Alt0 bInterfaceNumber
+				p[9 + 2] = AUDIO_INTERFACE + 1;  // Alt1 bInterfaceNumber
+				p += rx_as_len;
+				num_ifaces += 2;
+			}
+
+			if (has_out) {
+				active_endpoint_config_table[AUDIO_TX_ENDPOINT - 1] = ENDPOINT_TRANSMIT_ISOCHRONOUS;
+			}
+			if (has_in) {
+				active_endpoint_config_table[AUDIO_RX_ENDPOINT - 1] = ENDPOINT_RECEIVE_ISOCHRONOUS;
+				active_endpoint_config_table[AUDIO_SYNC_ENDPOINT - 1] = ENDPOINT_TRANSMIT_ISOCHRONOUS;
+			}
+		}
+	}
+
+	const uint16_t total_len = (uint16_t)(p - active_config_descriptor);
+	active_config_descriptor[2] = LSB(total_len);
+	active_config_descriptor[3] = MSB(total_len);
+	active_config_descriptor[4] = num_ifaces;
+
+	active_descriptor_list[list_idx++] = (usb_descriptor_list_t){0x0100, 0x0000, active_device_descriptor, sizeof(active_device_descriptor)};
+	active_descriptor_list[list_idx++] = (usb_descriptor_list_t){0x0200, 0x0000, active_config_descriptor, total_len};
+#ifdef RAWHID_INTERFACE
+	if (!(flags & USB_CFG_MSC) && (flags & USB_CFG_RAWHID)) {
+		active_descriptor_list[list_idx++] = (usb_descriptor_list_t){0x2200, RAWHID_INTERFACE, rawhid_report_desc, sizeof(rawhid_report_desc)};
+		active_descriptor_list[list_idx++] = (usb_descriptor_list_t){0x2100, RAWHID_INTERFACE, active_config_descriptor + rawhid_offset, 9};
+	}
+#endif
+	active_descriptor_list[list_idx++] = (usb_descriptor_list_t){0x0300, 0x0000, (const uint8_t *)&string0, 0};
+	active_descriptor_list[list_idx++] = (usb_descriptor_list_t){0x0301, 0x0409, (const uint8_t *)&usb_string_manufacturer_name, 0};
+	active_descriptor_list[list_idx++] = (usb_descriptor_list_t){0x0302, 0x0409, (const uint8_t *)&usb_string_product_name, 0};
+	active_descriptor_list[list_idx++] = (usb_descriptor_list_t){0x0303, 0x0409, (const uint8_t *)&usb_string_serial_number, 0};
+	active_descriptor_list[list_idx++] = (usb_descriptor_list_t){0, 0, NULL, 0};
+
+	usb_active_endpoint_config_table = active_endpoint_config_table;
+	usb_active_descriptor_list = active_descriptor_list;
+}
+#endif // USB_DYNAMIC_CONFIG
 
 #endif // NUM_ENDPOINTS
 #endif // F_CPU >= 20 MHz

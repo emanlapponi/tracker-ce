@@ -4,12 +4,6 @@ AudioOutput::AudioOutput()
 {
     constexpr int kLimiterSidechainChannelIdx = 1;
 
-#ifndef PLATFORM_IMX
-    connections.push_back(new AudioConnection(
-      &limiterSidechainMux, 0, &limiter[OutputChannels::kLeft], kLimiterSidechainChannelIdx));
-    connections.push_back(new AudioConnection(
-      &limiterSidechainMux, 0, &limiter[OutputChannels::kRight], kLimiterSidechainChannelIdx));
-#else
     connections.push_back(new AudioConnection(&limiterSidechainMux[OutputChannels::kLeft],
                                               0,
                                               &limiter[OutputChannels::kLeft],
@@ -18,7 +12,6 @@ AudioOutput::AudioOutput()
                                               0,
                                               &limiter[OutputChannels::kRight],
                                               kLimiterSidechainChannelIdx));
-#endif
 
     constexpr int kStreamInputIdx = 0;
     connections.push_back(new AudioConnection(
@@ -59,20 +52,23 @@ AudioOutput::AudioOutput()
         usbOutput.connectInputToUsbChannel(
           idx, UsbOutputStream::SourceChannel::kRight, usbChannelRight);
     }
+#else
+    connections.push_back(
+      new AudioConnection(&finalMixer[OutputChannels::kLeft], 0, &usbOutput, 0));
+    connections.push_back(
+      new AudioConnection(&finalMixer[OutputChannels::kRight], 0, &usbOutput, 1));
+
+    usbOutput.connectInputToUsbChannel(
+      UsbOutputStream::kMaster, UsbOutputStream::SourceChannel::kLeft, 0);
+    usbOutput.connectInputToUsbChannel(
+      UsbOutputStream::kMaster, UsbOutputStream::SourceChannel::kRight, 1);
 #endif
 }
 
-#ifndef PLATFORM_IMX
-AudioMux* AudioOutput::getLimiterSidechainMux()
-{
-    return &limiterSidechainMux;
-}
-#else
 AudioMux* AudioOutput::getLimiterSidechainMux(OutputChannels channel)
 {
     return &limiterSidechainMux[channel];
 }
-#endif
 
 AudioEffectLimiter* AudioOutput::getLimiter(OutputChannels channel)
 {
@@ -90,9 +86,7 @@ AudioOutputStream* AudioOutput::getStream()
     return &outputStream;
 }
 
-#ifdef PLATFORM_IMX
 UsbOutputStream* AudioOutput::getUsbStream()
 {
     return &usbOutput;
 }
-#endif

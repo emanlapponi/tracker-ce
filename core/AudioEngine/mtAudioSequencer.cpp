@@ -643,6 +643,10 @@ void playerEngine::fxRandomVolume(uint8_t fx_val, uint8_t fx_n)
     if (trackControlParameter[(int)controlType::sequencerMode + otherFx_n]
                              [(int)parameterList::volume])
         localVolume = currentSeqModValues.volume;
+    else if (stepVelocity >= 0)
+        localVolume = (uint8_t)clamp<int>((int)stepVelocity,
+                                          (int)MIN_INSTRUMENT_VOLUME,
+                                          (int)MAX_INSTRUMENT_VOLUME);
     else
         localVolume = mtProject.instrument[currentInstrument_idx].volume;
 
@@ -2836,14 +2840,19 @@ void playerEngine::clearFxAmpRateLFO()
 
 void playerEngine::syncFxAmpLFO()
 {
-    for (int channel = 0; channel < (int)playMemPtr.size(); channel++)
+    bool isAmpRandom =
+      (mtProject.instrument[currentInstrument_idx].envelope[envAmp].loop == 1) &&
+      (mtProject.instrument[currentInstrument_idx].lfo[envAmp].shape == lfoShapeRandom);
+    const int activeChannels = voiceIsStereo ? (int)playMemPtr.size() : 1;
+    for (int channel = 0; channel < activeChannels; channel++)
     {
         playMemPtr[channel]->envelopeNoteOff();
         playMemPtr[channel]->envelopeSetIdle();
-        bool isAmpRandom =
-          (mtProject.instrument[currentInstrument_idx].envelope[envAmp].loop == 1) &&
-          (mtProject.instrument[currentInstrument_idx].lfo[envAmp].shape == lfoShapeRandom);
         playMemPtr[channel]->envelopeSetIsRandom(isAmpRandom);
         playMemPtr[channel]->envelopeNoteOn(currentInstrument_idx, currentNote);
+    }
+    if (!voiceIsStereo)
+    {
+        playMemPtr[1]->stop();
     }
 }

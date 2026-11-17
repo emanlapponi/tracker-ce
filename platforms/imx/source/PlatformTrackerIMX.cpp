@@ -60,7 +60,7 @@ int16_t leftBuffer[128];
 int16_t rightBuffer[128];
 
 extern "C" void updateUsbOutputBuffers(void* left, void* right, int count);
-extern "C" void updateUsbInputBuffers(void* data, int count);
+extern "C" bool updateUsbInputBuffers(void* data, int count);
 
 extern void* _malloc_r(struct _reent* r, size_t sz);
 
@@ -97,8 +97,9 @@ void updateInputBuffers(void* data)
     if (trackerInstance != nullptr)
     {
         static uint32_t usb_rx_buffer[kAudioBlockSamples]{};
-        updateUsbInputBuffers(usb_rx_buffer, kAudioBlockSamples);
-        trackerInstance->updateInputAudioBuffers(data, usb_rx_buffer, kAudioBlockSamples);
+        const bool hasUsbRx = updateUsbInputBuffers(usb_rx_buffer, kAudioBlockSamples);
+        trackerInstance->updateInputAudioBuffers(
+          data, hasUsbRx ? usb_rx_buffer : nullptr, kAudioBlockSamples);
     }
 }
 

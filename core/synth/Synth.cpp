@@ -204,25 +204,38 @@ void Synth::init(Platform* platform, std::function<tiny_optional<float>()> getTe
     };
     static_assert(sizeof(PsynRawHeader) == 60);
 
-    auto getMetadataCountsForType = [this](int typeId) -> std::pair<int, int>
+    struct MetadataCounts
     {
+        int paramCount = 0;
+        int baseParamCount = 0;
+        int sampleSlotCount = 0;
+    };
+    auto getMetadataCountsForType = [this](int typeId) -> MetadataCounts
+    {
+        auto countsFromMeta = [](const polysynth::Patch::Metadata& meta) -> MetadataCounts
+        {
+            const int totalParams = static_cast<int>(meta.params.size());
+            const int baseParams =
+              (meta.voiceSleepParamId >= 0 && totalParams > 0) ? (totalParams - 1) : totalParams;
+            return {
+                .paramCount = totalParams,
+                .baseParamCount = baseParams,
+                .sampleSlotCount = static_cast<int>(meta.sampleSlots.size()),
+            };
+        };
         for (const auto& part : parts)
         {
             if (part.patch && *part.instrumentTypeId == typeId)
             {
-                const auto& meta = part.patch->getMetadata();
-                return { static_cast<int>(meta.params.size()),
-                         static_cast<int>(meta.sampleSlots.size()) };
+                return countsFromMeta(part.patch->getMetadata());
             }
         }
         auto tmp = patchStore->createPatch(typeId);
         if (tmp)
         {
-            const auto& meta = tmp->getMetadata();
-            return { static_cast<int>(meta.params.size()),
-                     static_cast<int>(meta.sampleSlots.size()) };
+            return countsFromMeta(tmp->getMetadata());
         }
-        return { 0, 0 };
+        return {};
     };
 
     auto mapPtToWaveId = [](int ptId) -> int32_t
@@ -292,15 +305,16 @@ void Synth::init(Platform* platform, std::function<tiny_optional<float>()> getTe
         {
             patchFolder = codeName;
         }
-        auto [paramCount, sampleSlotCount] = getMetadataCountsForType(regId);
+        const auto counts = getMetadataCountsForType(regId);
         pluginTypes.push_back(PluginTypeInfo{
           .trackerTypeId = static_cast<polysynth::InstrumentTypeId>(regId),
           .waveTypeId = hdr.type_id_wave,
           .playTrackerTypeId = hdr.type_id_play_tracker,
           .codeName = std::move(codeName),
           .patchFolder = std::move(patchFolder),
-          .paramCount = paramCount,
-          .sampleSlotCount = sampleSlotCount,
+          .paramCount = counts.paramCount,
+          .baseParamCount = counts.baseParamCount,
+          .sampleSlotCount = counts.sampleSlotCount,
         });
     }
 
@@ -314,15 +328,16 @@ void Synth::init(Platform* platform, std::function<tiny_optional<float>()> getTe
             continue;
         }
         std::string codeName = synth->getInstrumentName(*typeId);
-        auto [paramCount, sampleSlotCount] = getMetadataCountsForType(*typeId);
+        const auto counts = getMetadataCountsForType(*typeId);
         pluginTypes.push_back(PluginTypeInfo{
           .trackerTypeId = typeId,
           .waveTypeId = mapPtToWaveId(*typeId),
           .playTrackerTypeId = *typeId,
           .codeName = codeName,
           .patchFolder = codeName,
-          .paramCount = paramCount,
-          .sampleSlotCount = sampleSlotCount,
+          .paramCount = counts.paramCount,
+          .baseParamCount = counts.baseParamCount,
+          .sampleSlotCount = counts.sampleSlotCount,
         });
     }
 
@@ -1357,7 +1372,9 @@ bool Synth::loadPatchByPath(int part, const std::string& fullSdPath)
         {
             compatible = true;
         }
-        else if (activePlugin->paramCount > 0 && wireInfo.paramCount == activePlugin->paramCount)
+        else if (wireInfo.paramCount > 0 &&
+                 (wireInfo.paramCount == activePlugin->paramCount ||
+                  wireInfo.paramCount == activePlugin->baseParamCount))
         {
             compatible = true;
         }
@@ -1455,8 +1472,11 @@ std::string Synth::describePatchFile(int part, const std::string& fullSdPath)
     {
         const bool idMatches = (info.playTrackerTypeId == wireInfo.rawTypeId ||
                                 info.waveTypeId == wireInfo.rawTypeId);
-        const bool countMatches = (info.paramCount > 0 && info.paramCount == wireInfo.paramCount);
-        if (!idMatches && !countMatches)
+        const bool exactCountMatches =
+          (info.paramCount > 0 && info.paramCount == wireInfo.paramCount);
+        const bool baseCountMatches =
+          (info.baseParamCount > 0 && info.baseParamCount == wireInfo.paramCount);
+        if (!idMatches && !exactCountMatches && !baseCountMatches)
         {
             continue;
         }
@@ -1466,9 +1486,13 @@ std::string Synth::describePatchFile(int part, const std::string& fullSdPath)
         {
             score += 100;
         }
-        if (countMatches)
+        if (exactCountMatches)
         {
             score += 50;
+        }
+        else if (baseCountMatches)
+        {
+            score += 40;
         }
         for (const auto& s : wireInfo.samples)
         {

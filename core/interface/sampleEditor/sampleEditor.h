@@ -341,6 +341,7 @@ class cSampleEditor : public ModuleBase
     int getCurrentPageParams();
     bool areThereMoreThanOneParamsPage();
     bool isModularPresetPage() const;
+    void openLoadEffectBrowser();
     void openModularPresetLoadBrowser();
     void openModularPresetSaveBrowser();
     void resetModularEffectParams();
@@ -428,6 +429,7 @@ class cSampleEditor : public ModuleBase
 
     // params screen
     char parameterValueLabel[kMaxParametersInEffect][16];
+    char parameterFileText[kMaxParametersInEffect][40] = {};
 
     char* const parameterValueLabelPtr[kMaxParametersInEffect] = {
         &parameterValueLabel[0][0], &parameterValueLabel[1][0],  &parameterValueLabel[2][0],
@@ -475,7 +477,6 @@ class cSampleEditor : public ModuleBase
 
     // Modular effect state & dynamic UI definitions
     uint16_t selectedEffectListIdx = 0;
-    uint16_t currentModularPluginIdx = 0;
     strEffectDisplayConstantParams s_modularEffectParams = {};
     char s_modularLabelStorage[kMaxParametersInEffect][8] = {};
     char s_modularUnitStorage[kMaxParametersInEffect][8] = {};
@@ -490,6 +491,8 @@ class cSampleEditor : public ModuleBase
     void loadModularEffectUI(const PtfxHeader& header);
     const strEffectDisplayConstantParams& getCurrentEffectDisplayParams() const;
     bool isParameterList(uint8_t paramIdx) const;
+    bool isParameterFile(uint8_t paramIdx) const;
+    const char* getParameterFileText(uint8_t paramIdx) const;
     uint8_t getParameterListCount(uint8_t paramIdx) const;
     char** getParameterListItems(uint8_t paramIdx) const;
 };

@@ -366,7 +366,7 @@ void Sequencer::fillLinearVolume(int16_t fillStep,
         for (uint8_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             strPattern::strTrack::strStep* step = &currentPattern->track[t].step[s];
-            if (isStepToFillProp(step, offset, step->volume >= 0, fillStep, density))
+            if (isStepToFillProp(step, offset, step->volume != STEP_VELO_DEFAULT, fillStep, density))
             {
                 float tempFloat = fromVal;
                 if (sel->firstStep != sel->lastStep)
@@ -399,7 +399,7 @@ void Sequencer::fillRandomVolume(int16_t fillStep,
         for (uint8_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             strPattern::strTrack::strStep* step = &currentPattern->track[t].step[s];
-            if (isStepToFillProp(step, offset, step->volume >= 0, fillStep, density))
+            if (isStepToFillProp(step, offset, step->volume != STEP_VELO_DEFAULT, fillStep, density))
             {
                 step->volume = clamp<int>(utilMathRandom::random(fromVal, toVal + 1), 0, 100);
             }
@@ -913,14 +913,37 @@ void Sequencer::changeSelectionVolume(int16_t value)
 
             if (step->volume >= 0)
             {
-                step->volume = clamp<int>(step->volume + value, 0, 100);
+                if (!isMultiSelection() && step->volume == 0 && value < 0)
+                {
+                    step->volume = STEP_VELO_OFF;
+                }
+                else
+                {
+                    step->volume = clamp<int>(step->volume + value, 0, 100);
+                }
                 somethingWasChanged = true;
             }
             else if (!isMultiSelection())
             {
-                int baseVol = step->note >= 0 ? getInstrumentVolume(step->instrument) : 50;
-                step->volume = clamp<int>(baseVol + value, 0, 100);
-                somethingWasChanged = true;
+                if (step->volume == STEP_VELO_OFF)
+                {
+                    if (value > 0)
+                    {
+                        step->volume = clamp<int>(value - 1, 0, 100);
+                        somethingWasChanged = true;
+                    }
+                }
+                else if (step->note == STEP_NOTE_EMPTY && value < 0)
+                {
+                    step->volume = STEP_VELO_OFF;
+                    somethingWasChanged = true;
+                }
+                else
+                {
+                    int baseVol = step->note >= 0 ? getInstrumentVolume(step->instrument) : 50;
+                    step->volume = clamp<int>(baseVol + value, 0, 100);
+                    somethingWasChanged = true;
+                }
             }
         }
     }

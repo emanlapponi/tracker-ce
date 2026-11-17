@@ -30,6 +30,7 @@
 #define effect_dynamics_h_
 
 #include "AudioStream.h"
+#include "mixer.h"
 #include "util_math.h"
 #include <cmath>
 
@@ -153,6 +154,19 @@ class AudioEffectDynamics : public AudioStream
         makeupdb = clamp(gain, -12.0f, 24.0f);
     }
 
+#ifdef AUDIO_NULL_IS_SILENCE
+    void setSilenceWatch(const AudioMixerBase* mixerA,
+                         unsigned int channelA,
+                         const AudioMixerBase* mixerB = nullptr,
+                         unsigned int channelB = 0)
+    {
+        watch[0] = mixerA;
+        watchChannel[0] = (uint8_t)channelA;
+        watch[1] = mixerB;
+        watchChannel[1] = (uint8_t)channelB;
+    }
+#endif
+
   private:
     audio_block_t* inputQueueArray[1];
 
@@ -192,6 +206,20 @@ class AudioEffectDynamics : public AudioStream
     float aLimitRelease;
 
     int32_t last_mult;
+
+#ifdef AUDIO_NULL_IS_SILENCE
+    const AudioMixerBase* watch[2] = { nullptr, nullptr };
+    uint8_t watchChannel[2] = { 0, 0 };
+    bool lastMultPending = false;
+    float pendingGain = 0.0f;
+
+    bool outputIsUnread() const
+    {
+        if (watch[0] == nullptr || !watch[0]->isInputSilenced(watchChannel[0]))
+            return false;
+        return watch[1] == nullptr || watch[1]->isInputSilenced(watchChannel[1]);
+    }
+#endif
 
     void computeMakeupGain()
     {

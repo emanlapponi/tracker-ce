@@ -68,12 +68,13 @@ void Recorder::record()
 
     if (config.sourceChannels == 1)
     {
-        inputStereoToMono->setOutSignalType(AudioStereoToMono::OutSignalType::monoL);
+        inputStereoToMono->setOutSignalType(config.useRightChannelForMono
+                                              ? AudioStereoToMono::OutSignalType::monoR
+                                              : AudioStereoToMono::OutSignalType::monoL);
     }
     else if (config.sourceChannels == 2)
     {
-        inputStereoToMono->setOutSignalType(
-          (AudioStereoToMono::OutSignalType)mtConfig.general.lineInOutType);
+        inputStereoToMono->setOutSignalType(AudioStereoToMono::OutSignalType::stereo);
     }
 
     isActive = true;
@@ -282,8 +283,7 @@ void Recorder::finishRecording()
     }
 
     isActive = false;
-    inputStereoToMono->setOutSignalType(
-      (AudioStereoToMono::OutSignalType)mtConfig.general.lineInOutType);
+    inputStereoToMono->setOutSignalType(AudioStereoToMono::OutSignalType::stereo);
 }
 
 Recorder recorder;

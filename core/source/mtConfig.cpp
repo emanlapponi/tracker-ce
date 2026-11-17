@@ -413,10 +413,7 @@ void checkConfig()
     if (mtConfig.general.patternInfo > 2)
         mtConfig.general.patternInfo = 0;
 
-    if (mtConfig.general.lineInOutType > 2)
-    {
-        mtConfig.general.lineInOutType = 0;
-    }
+    mtConfig.general.lineInOutType = 0;
 
     if (mtConfig.general.theme >= ThemeManager::kMaxCustomThemes)
     {

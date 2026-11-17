@@ -31,6 +31,7 @@ void PlatformImpl::update()
     //    {
     fileSystem.update();
     //    }
+    usb.update();
 }
 
 void PlatformImpl::setPowerMode(bool mode)

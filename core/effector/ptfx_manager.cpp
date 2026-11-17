@@ -1,145 +1,83 @@
 #include "ptfx_manager.h"
 #include "Platform.h"
 #include "TrackerImpl.h"
-#include "mtAudioEngine.h"
 #include "sampleEditor/sampleEditor.h"
 
 #include <cr_section_macros.h>
-#include <cstdio>
 #include <cstring>
 #include <strings.h>
 
-extern uint8_t externalRamScratchBuff[];
-
-__NOINIT(EXTERNAL_RAM) static PtfxEntry s_ptfxEntries[kMaxModularPlugins];
+__NOINIT(EXTERNAL_RAM) PtfxEntry PtfxManager::s_activeEntry;
 __NOINIT(EXTERNAL_RAM) PtfxHeader PtfxManager::s_activeHeader;
-__NOINIT(EXTERNAL_RAM) char* PtfxManager::s_effectDisplayNames[kBuiltInEffectsCount + kMaxModularPlugins];
+__NOINIT(EXTERNAL_RAM) char* PtfxManager::s_effectDisplayNames[kBuiltInEffectsCount + 2];
 
-uint16_t PtfxManager::s_pluginCount = 0;
-bool PtfxManager::s_scanned = false;
+bool PtfxManager::s_initialized = false;
+bool PtfxManager::s_hasLoadedPlugin = false;
 
-static PtfxEntry* getPluginEntry(uint16_t index)
+static bool s_effectsDirChecked = false;
+
+void PtfxManager::rebuildEffectDisplayNames()
 {
-    if (index >= kMaxModularPlugins)
-        return nullptr;
-    return &s_ptfxEntries[index];
-}
-
-void PtfxManager::scanEffects(bool force)
-{
-    if (s_scanned && !force)
-        return;
-
-    if (!s_scanned)
-    {
-        memset(&s_activeHeader, 0, sizeof(s_activeHeader));
-    }
-    s_pluginCount = 0;
     memset(s_effectDisplayNames, 0, sizeof(s_effectDisplayNames));
 
-    // Initialize built-in effect names (0 .. 16)
     for (uint16_t i = 0; i < kBuiltInEffectsCount; i++)
     {
         s_effectDisplayNames[i] = effectNamesLabels[i];
     }
 
-    TrackerImpl* tracker = TrackerImpl::getInstance();
-    if (!tracker)
-        return;
-    Platform* platform = tracker->getPlatform();
-    if (!platform)
-        return;
-    FileSystem* fs = platform->getFileSystem();
-    if (!fs || !fs->isSdCardInserted())
-        return;
-
-    if (!fs->exists("/Effects"))
+    if (s_hasLoadedPlugin)
     {
-        fs->mkdir(0, "/Effects");
-        s_scanned = true;
-        return;
+        s_effectDisplayNames[kBuiltInEffectsCount] = s_activeEntry.displayName;
+        s_effectDisplayNames[kBuiltInEffectsCount + 1] = const_cast<char*>("Load Effect...");
+    }
+    else
+    {
+        s_effectDisplayNames[kBuiltInEffectsCount] = const_cast<char*>("Load Effect...");
+        s_effectDisplayNames[kBuiltInEffectsCount + 1] = nullptr;
+    }
+}
+
+void PtfxManager::initEffectList()
+{
+    if (!s_initialized)
+    {
+        memset(&s_activeEntry, 0, sizeof(s_activeEntry));
+        memset(&s_activeHeader, 0, sizeof(s_activeHeader));
+        s_hasLoadedPlugin = false;
+        s_initialized = true;
     }
 
-    // Use externalRamScratchBuff temporarily during scan to avoid static RAM overhead
-    engine.getSdPlayer()->stop();
-    char** scanFileList = reinterpret_cast<char**>(externalRamScratchBuff);
-    char*  scanNamesBuffer = reinterpret_cast<char*>(externalRamScratchBuff + kMaxModularPlugins * sizeof(char*));
-    int    scanNamesBufferSize = kMaxModularPlugins * 48;
-    int    filesCount = kMaxModularPlugins;
-
-    fs->listDirContents(
-      "/Effects",
-      FileSystem::DirContentType::kFiles,
-      [](const char* name) {
-          size_t len = strlen(name);
-          return len > 5 && strcasecmp(name + len - 5, ".ptfx") == 0;
-      },
-      scanNamesBuffer,
-      scanNamesBufferSize,
-      48,
-      filesCount,
-      scanFileList);
-
-    for (int i = 0; i < filesCount && s_pluginCount < kMaxModularPlugins; i++)
+    if (!s_effectsDirChecked)
     {
-        char filepath[64];
-        snprintf(filepath, sizeof(filepath), "/Effects/%s", scanFileList[i]);
-
-        PtfxHeader tempHeader;
-        if (PtfxLoader::readHeader(filepath, tempHeader))
+        TrackerImpl* tracker = TrackerImpl::getInstance();
+        Platform* platform = tracker ? tracker->getPlatform() : nullptr;
+        FileSystem* fs = platform ? platform->getFileSystem() : nullptr;
+        if (fs && fs->isSdCardInserted())
         {
-#ifndef PLATFORM_IMX
-            if (tempHeader.flags & PTFX_FLAG_IMX_ONLY)
-                continue;
-#endif
-            PtfxEntry* entry = getPluginEntry(s_pluginCount);
-            if (!entry)
-                break;
-
-            strncpy(entry->filename, scanFileList[i], sizeof(entry->filename) - 1);
-            entry->filename[sizeof(entry->filename) - 1] = '\0';
-            entry->flags = tempHeader.flags;
-
-            if (tempHeader.display_name[0] != '\0')
+            if (!fs->exists("/Effects"))
             {
-                strncpy(entry->displayName, tempHeader.display_name, sizeof(entry->displayName) - 1);
+                fs->mkdir(0, "/Effects");
             }
-            else
-            {
-                // Fallback to filename without extension
-                strncpy(entry->displayName, entry->filename, sizeof(entry->displayName) - 1);
-                size_t nameLen = strlen(entry->displayName);
-                if (nameLen > 5 && strcasecmp(entry->displayName + nameLen - 5, ".ptfx") == 0)
-                {
-                    entry->displayName[nameLen - 5] = '\0';
-                }
-            }
-            entry->displayName[sizeof(entry->displayName) - 1] = '\0';
-
-            s_effectDisplayNames[kBuiltInEffectsCount + s_pluginCount] = entry->displayName;
-            s_pluginCount++;
+            s_effectsDirChecked = true;
         }
     }
 
-    s_scanned = true;
+    rebuildEffectDisplayNames();
 }
 
-uint16_t PtfxManager::getPluginCount()
+bool PtfxManager::hasLoadedPlugin()
 {
-    return s_pluginCount;
+    return s_hasLoadedPlugin;
 }
 
-const PtfxEntry* PtfxManager::getPlugin(uint16_t index)
+const PtfxEntry* PtfxManager::getActivePlugin()
 {
-    return getPluginEntry(index);
+    return s_hasLoadedPlugin ? &s_activeEntry : nullptr;
 }
 
-const char* PtfxManager::getPluginDisplayName(uint16_t index)
+const char* PtfxManager::getActivePluginDisplayName()
 {
-    PtfxEntry* entry = getPluginEntry(index);
-    if (!entry)
-        return "";
-    return entry->displayName;
+    return s_hasLoadedPlugin ? s_activeEntry.displayName : "";
 }
 
 const PtfxHeader& PtfxManager::getActiveHeader()
@@ -147,37 +85,70 @@ const PtfxHeader& PtfxManager::getActiveHeader()
     return s_activeHeader;
 }
 
-bool PtfxManager::loadPlugin(uint16_t index, mtEffectModular& modularEffect)
+bool PtfxManager::loadPluginFromPath(const char* filepath, mtEffectModular& modularEffect)
 {
-    if (index >= s_pluginCount)
+    if (!filepath || filepath[0] == '\0')
         return false;
 
-    PtfxEntry* entry = getPluginEntry(index);
-    if (!entry)
-        return false;
-
-    char filepath[64];
-    snprintf(filepath, sizeof(filepath), "/Effects/%s", entry->filename);
-
+    PtfxHeader           tempHeader{};
     PtfxInitFunc         initFunc         = nullptr;
     PtfxSetParamFunc     setParamFunc     = nullptr;
     PtfxProcessBlockFunc processBlockFunc = nullptr;
 
     bool loaded = PtfxLoader::loadPlugin(
-      filepath, s_activeHeader, initFunc, setParamFunc, processBlockFunc);
+      filepath, tempHeader, initFunc, setParamFunc, processBlockFunc);
 
     if (!loaded)
         return false;
 
+    memcpy(&s_activeHeader, &tempHeader, sizeof(PtfxHeader));
+
+    strncpy(s_activeEntry.filepath, filepath, sizeof(s_activeEntry.filepath) - 1);
+    s_activeEntry.filepath[sizeof(s_activeEntry.filepath) - 1] = '\0';
+
+    const char* slash = strrchr(filepath, '/');
+    const char* baseName = (slash != nullptr) ? (slash + 1) : filepath;
+    strncpy(s_activeEntry.filename, baseName, sizeof(s_activeEntry.filename) - 1);
+    s_activeEntry.filename[sizeof(s_activeEntry.filename) - 1] = '\0';
+
+    s_activeEntry.flags = s_activeHeader.flags;
+
+    if (s_activeHeader.display_name[0] != '\0')
+    {
+        strncpy(s_activeEntry.displayName, s_activeHeader.display_name, sizeof(s_activeEntry.displayName) - 1);
+    }
+    else
+    {
+        strncpy(s_activeEntry.displayName, s_activeEntry.filename, sizeof(s_activeEntry.displayName) - 1);
+        size_t nameLen = strlen(s_activeEntry.displayName);
+        if (nameLen > 5 && strcasecmp(s_activeEntry.displayName + nameLen - 5, ".ptfx") == 0)
+        {
+            s_activeEntry.displayName[nameLen - 5] = '\0';
+        }
+    }
+    s_activeEntry.displayName[sizeof(s_activeEntry.displayName) - 1] = '\0';
+
+    s_hasLoadedPlugin = true;
+    s_initialized = true;
+    rebuildEffectDisplayNames();
+
     modularEffect.configurePlugin(s_activeHeader,
-                                 PtfxLoader::getScratchBuffer(),
-                                 PtfxLoader::getMaxScratchSize(),
-                                 PtfxLoader::getHostApi(),
-                                 initFunc,
-                                 setParamFunc,
-                                 processBlockFunc);
+                                  PtfxLoader::getScratchBuffer(),
+                                  PtfxLoader::getMaxScratchSize(),
+                                  PtfxLoader::getHostApi(),
+                                  initFunc,
+                                  setParamFunc,
+                                  processBlockFunc);
 
     return true;
+}
+
+bool PtfxManager::reloadActivePlugin(mtEffectModular& modularEffect)
+{
+    if (!s_hasLoadedPlugin || s_activeEntry.filepath[0] == '\0')
+        return false;
+
+    return loadPluginFromPath(s_activeEntry.filepath, modularEffect);
 }
 
 char** PtfxManager::getEffectListNames()
@@ -187,5 +158,20 @@ char** PtfxManager::getEffectListNames()
 
 uint16_t PtfxManager::getTotalEffectListCount()
 {
-    return kBuiltInEffectsCount + s_pluginCount;
+    return s_hasLoadedPlugin ? (kBuiltInEffectsCount + 2) : (kBuiltInEffectsCount + 1);
+}
+
+bool PtfxManager::isLoadedPluginListIndex(uint16_t listIndex)
+{
+    return s_hasLoadedPlugin && (listIndex == kBuiltInEffectsCount);
+}
+
+bool PtfxManager::isLoadEffectListIndex(uint16_t listIndex)
+{
+    return listIndex == getLoadEffectListIndex();
+}
+
+uint16_t PtfxManager::getLoadEffectListIndex()
+{
+    return s_hasLoadedPlugin ? (kBuiltInEffectsCount + 1) : kBuiltInEffectsCount;
 }

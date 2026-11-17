@@ -55,7 +55,10 @@ class cFileTransfer
                              uint32_t memOffset,
                              uint8_t mode);
     uint8_t loadFileToMemory(const char* file, uint8_t* memory, uint32_t memSize, uint8_t mode);
-    uint8_t loadSampleToMemory(const char* file, int16_t* memory, uint32_t& outSampleCount);
+    uint8_t loadSampleToMemory(const char* file,
+                               int16_t* memory,
+                               uint32_t maxSampleCount,
+                               uint32_t& outSampleCount);
     uint8_t saveMemoryToFile(uint8_t* memory, const char* file, uint32_t memSize);
 
     uint8_t saveMemoryToWav(int16_t* memoryChannelL,

@@ -122,6 +122,21 @@ class ChiptuneSynthVoice : public sdk::CustomSynthVoice<ChiptuneSynthVoice, Chip
 
     bool isActive() final { return envStage != EnvStage::kIdle; }
 
+    void tickIdle(const InstrumentVoiceContext& /*ctx*/) final
+    {
+        const float blockAdvance = static_cast<float>(kAudioBufferSize) / sdk::kSampleRate;
+        pwmPhase += pwmRateHz * blockAdvance;
+        while (pwmPhase >= 1.0f)
+        {
+            pwmPhase -= 1.0f;
+        }
+        vibPhase += vibRateHz * blockAdvance;
+        while (vibPhase >= 1.0f)
+        {
+            vibPhase -= 1.0f;
+        }
+    }
+
     void onNoteOn(const InstrumentVoiceContext& /*ctx*/,
                   note_t note,
                   float /*velocity*/,
@@ -154,12 +169,13 @@ class ChiptuneSynthVoice : public sdk::CustomSynthVoice<ChiptuneSynthVoice, Chip
         }
     }
 
-    void renderVoiceAudio(const InstrumentVoiceContext& /*ctx*/,
+    void renderVoiceAudio(const InstrumentVoiceContext& ctx,
                           AudioBufferStereoRef outputBuffer)
     {
         auto out = outputBuffer[0];
         if (envStage == EnvStage::kIdle)
         {
+            tickIdle(ctx);
             std::fill(out.begin(), out.end(), 0.0f);
             std::fill(lastGraphSamples.begin(), lastGraphSamples.end(), 0.0f);
             return;

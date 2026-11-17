@@ -1847,6 +1847,12 @@ static void changePlayModeSelection(int16_t value)
         //*******************************wavetable window size moze byc tylko potęgą 2
         // Jezeli length nie jest potega 2 trzeba go zrownac do najwiekszej mozliwej potegi 2
         uint16_t localMask = 2048;
+        // A size above the largest window, as a damaged or foreign instrument file can
+        // hold, may have no bit that the mask reaches, and the loop below would not end.
+        if (SP->editorInstrument->sample.wavetable_window_size > localMask)
+        {
+            SP->editorInstrument->sample.wavetable_window_size = localMask;
+        }
         while (!(SP->editorInstrument->sample.wavetable_window_size & localMask))
         {
             if ((SP->editorInstrument->sample.wavetable_window_size == 0))

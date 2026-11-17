@@ -107,56 +107,95 @@ AUDIO_CORE_FLASH audio_block_t* AudioPlayMemory::updateWavetable()
 
         int16_t* in_interpolation = in + 1;
 
-        for (int i = 0; i < AUDIO_BLOCK_SAMPLES; i++)
+        // Fast path (not streamed, no glide): the playhead state lives in locals for the whole block and the
+        // members are written back once, so the int16 stores through out cannot alias it. Same arithmetic as below.
+        if (!constrainsInSamples.pitchSmoothing)
         {
-            //*********************************** GLIDE HANDLE
-            if (constrainsInSamples.pitchSmoothing)
+            int32_t iPitchCounter = this->iPitchCounter;
+            int32_t interpolationDif = this->interpolationDif;
+            int16_t currentSampelValue = this->currentSampelValue;
+            const uint32_t interpolationCondition = this->interpolationCondition;
+            const uint16_t wavetableWindowSize = this->wavetableWindowSize;
+
+            for (int i = 0; i < AUDIO_BLOCK_SAMPLES; i++)
             {
-                if (pitchSmoothingControlCounter <= constrainsInSamples.pitchSmoothing)
+                currentSampelValue = *(in + iPitchCounter);
+                if (interpolationCondition)
+                    interpolationDif = 0;
+                else
+                    interpolationDif = (*(in_interpolation + iPitchCounter) - currentSampelValue);
+                *out++ = currentSampelValue +
+                         (int32_t)(((currentFractionPitchCounter >> 2) * interpolationDif) >> 14);
+                iPitchCounter += castPitchControl;
+                currentFractionPitchCounter += currentFractionPitchControl;
+                if (currentFractionPitchCounter >= MAX_16BIT)
                 {
-                    pitchControl += pitchSmoothingControl;
-                    if (pitchControl > wt_notes[MAX_NOTE - 1])
-                    {
-                        pitchControl = wt_notes[MAX_NOTE - 1];
-                        pitchSmoothingControlCounter = constrainsInSamples.pitchSmoothing;
-                    }
-                    else if (pitchControl < wt_notes[MIN_NOTE])
-                    {
-                        pitchControl = wt_notes[MIN_NOTE];
-                        pitchSmoothingControlCounter = constrainsInSamples.pitchSmoothing;
-                    }
-                    castPitchControl = (int32_t)pitchControl;
-                    pitchFraction = pitchControl - (int32_t)pitchControl;
-
-                    currentFractionPitchControl = pitchFraction * MAX_16BIT;
-
-                    pitchSmoothingControlCounter++;
+                    currentFractionPitchCounter -= MAX_16BIT;
+                    iPitchCounter++;
+                }
+                if (iPitchCounter >= wavetableWindowSize)
+                {
+                    iPitchCounter -= wavetableWindowSize;
                 }
             }
 
-            //***************************************************************************************
-            // poczatek przetwarzania pitchCountera
-            currentSampelValue = *(in + iPitchCounter);
-
-            if (interpolationCondition)
-                interpolationDif = 0;
-            else
-                interpolationDif = (*(in_interpolation + iPitchCounter) - currentSampelValue);
-
-            *out++ = currentSampelValue +
-                     (int32_t)(((currentFractionPitchCounter >> 2) * interpolationDif) >> 14);
-
-            iPitchCounter += castPitchControl;
-            currentFractionPitchCounter += currentFractionPitchControl;
-            if (currentFractionPitchCounter >= MAX_16BIT)
+            this->iPitchCounter = iPitchCounter;
+            this->interpolationDif = interpolationDif;
+            this->currentSampelValue = currentSampelValue;
+        }
+        else
+        {
+            for (int i = 0; i < AUDIO_BLOCK_SAMPLES; i++)
             {
-                currentFractionPitchCounter -= MAX_16BIT;
-                iPitchCounter++;
-            }
+                //*********************************** GLIDE HANDLE
+                if (constrainsInSamples.pitchSmoothing)
+                {
+                    if (pitchSmoothingControlCounter <= constrainsInSamples.pitchSmoothing)
+                    {
+                        pitchControl += pitchSmoothingControl;
+                        if (pitchControl > wt_notes[MAX_NOTE - 1])
+                        {
+                            pitchControl = wt_notes[MAX_NOTE - 1];
+                            pitchSmoothingControlCounter = constrainsInSamples.pitchSmoothing;
+                        }
+                        else if (pitchControl < wt_notes[MIN_NOTE])
+                        {
+                            pitchControl = wt_notes[MIN_NOTE];
+                            pitchSmoothingControlCounter = constrainsInSamples.pitchSmoothing;
+                        }
+                        castPitchControl = (int32_t)pitchControl;
+                        pitchFraction = pitchControl - (int32_t)pitchControl;
 
-            if (iPitchCounter >= wavetableWindowSize)
-            {
-                iPitchCounter -= wavetableWindowSize;
+                        currentFractionPitchControl = pitchFraction * MAX_16BIT;
+
+                        pitchSmoothingControlCounter++;
+                    }
+                }
+
+                //***************************************************************************************
+                // poczatek przetwarzania pitchCountera
+                currentSampelValue = *(in + iPitchCounter);
+
+                if (interpolationCondition)
+                    interpolationDif = 0;
+                else
+                    interpolationDif = (*(in_interpolation + iPitchCounter) - currentSampelValue);
+
+                *out++ = currentSampelValue +
+                         (int32_t)(((currentFractionPitchCounter >> 2) * interpolationDif) >> 14);
+
+                iPitchCounter += castPitchControl;
+                currentFractionPitchCounter += currentFractionPitchControl;
+                if (currentFractionPitchCounter >= MAX_16BIT)
+                {
+                    currentFractionPitchCounter -= MAX_16BIT;
+                    iPitchCounter++;
+                }
+
+                if (iPitchCounter >= wavetableWindowSize)
+                {
+                    iPitchCounter -= wavetableWindowSize;
+                }
             }
         }
         next = currentStartAddress + pointsInSamples.start;

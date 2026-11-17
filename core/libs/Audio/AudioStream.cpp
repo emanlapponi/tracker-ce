@@ -45,9 +45,7 @@ uint16_t AudioStream::memory_used = 0;
 uint16_t AudioStream::memory_used_max = 0;
 bool AudioStream::renderMode = 0;
 
-#ifdef PLATFORM_IMX
 UsbAudio* AudioStream::usbAudio = nullptr;
-#endif
 
 volatile int __irq_semaphore = 0;
 
@@ -164,7 +162,8 @@ AUDIO_CORE_RAM void AudioStream::transmit(audio_block_t* block, unsigned char in
     {
         if (c->src_index == index)
         {
-            if (c->dst->inputQueue[c->dest_index] == NULL)
+            // An inactive destination (e.g. a disabled AudioRecordQueue or idle USB sink) takes no block
+            if (c->dst->active && c->dst->inputQueue[c->dest_index] == NULL)
             {
                 c->dst->inputQueue[c->dest_index] = block;
                 block->ref_count++;
@@ -213,7 +212,7 @@ void AudioConnection::connect(void)
 
     if (isConnected)
         return;
-    if (dest_index > dst->num_inputs)
+    if (dest_index >= dst->num_inputs)
         return;
     DISABLE_GLOBAL_INTERRUPTS();
     p = src->destination_list;
@@ -237,6 +236,22 @@ void AudioConnection::connect(void)
         p->next_dest = this;
     }
     this->next_dest = NULL;
+    // Determine whether src is updated before dst in update_all() list order
+    {
+        bool srcFirst = false;
+        for (AudioStream* q = AudioStream::first_update; q; q = q->next_update)
+        {
+            if (q == src)
+            {
+                srcFirst = true;
+                break;
+            }
+            if (q == dst)
+                break;
+        }
+        if (!srcFirst)
+            dst->hasLaterSource = true;
+    }
     src->numConnections++;
     src->active = true;
 
@@ -254,7 +269,7 @@ void AudioConnection::disconnect(void)
 
     if (!isConnected)
         return;
-    if (dest_index > dst->num_inputs)
+    if (dest_index >= dst->num_inputs)
         return;
     DISABLE_GLOBAL_INTERRUPTS();
     // Remove destination from source list

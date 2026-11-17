@@ -926,9 +926,13 @@ bool PatchImpl::deserialize(Patch& patch,
                             const polysynth_Patch& patchData,
                             bool loadSampleSlots)
 {
+    const size_t currentParamCount = patch.getMetadata().params.size();
+    const bool matchesInjectedVoiceSleepCount =
+      (patch.getMetadata().voiceSleepParamId >= 0 && currentParamCount > 0 &&
+       patchData.params_count == currentParamCount - 1);
     if (!areCompatibleInstrumentTypes(patch.getMetadata().instrumentTypeId,
                                       patchData.instrumentTypeId) &&
-        patchData.params_count != patch.getMetadata().params.size())
+        patchData.params_count != currentParamCount && !matchesInjectedVoiceSleepCount)
     {
         return false;
     }

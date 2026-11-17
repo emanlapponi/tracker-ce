@@ -798,6 +798,14 @@ void cPatternEditor::refreshPattern()
                                                       seqStep.volume,
                                                       Sequencer::fxValLabelAlign_right);
                 }
+                else if (seqStep.volume == Sequencer::STEP_VELO_OFF)
+                {
+                    row.fx[1][0] = '!';
+                    row.fx[1][1] = 'O';
+                    row.fx[1][2] = 'F';
+                    row.fx[1][3] = 'F';
+                    row.fx[1][4] = 0;
+                }
                 else
                 {
                     row.fx[1][0] = 'V';

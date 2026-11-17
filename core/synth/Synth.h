@@ -126,6 +126,7 @@ class Synth
         std::string codeName = {};
         std::string patchFolder = {};
         int paramCount = 0;
+        int baseParamCount = 0;
         int sampleSlotCount = 0;
     };
     std::array<Part, kSynthParts> parts;

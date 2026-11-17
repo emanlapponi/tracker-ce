@@ -19,7 +19,8 @@ static const int kAudioOutputInterruptLevel = value2priority(5);
 
 static const int kSDHCInterruptLevel = value2priority(6);
 
-static const int kUSBOTGPriorityLevel = value2priority(7);
+// Higher than audio (4/5) so 1ms USB isochronous frames are not starved during heavy AudioStream::update_all()
+static const int kUSBOTGPriorityLevel = value2priority(3);
 
 #endif
 
