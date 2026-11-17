@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AudioStream.h"
+#include "amplifier.h"
 #include <array>
 
 class Synth;
@@ -15,7 +16,9 @@ class PolySynth : public AudioStream
     {
     }
 
-    void init(Synth* trackerSynth);
+    using PanningAmplifiers = AudioAmplifier[kSynthParts][2]; // [part][left, right]
+
+    void init(Synth* trackerSynth, const PanningAmplifiers* panningAmplifiers);
     void setGain(int idx, float gainDB);
     virtual void update(void) override;
     uint8_t getRoutedTracks() const { return routedTracks; }
@@ -43,6 +46,7 @@ class PolySynth : public AudioStream
     void renderParts(audio_block_t* const* trackBlocks);
 
     Synth* trackerSynth = nullptr;
+    const PanningAmplifiers* panningAmplifiers = nullptr;
     bool isBlocked = true;
     float gainDB[kSynthParts] = {};
     uint8_t overloadCooldownBlocks = 0;

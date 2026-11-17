@@ -7,7 +7,7 @@ SynthVoice::SynthVoice()
 
 void SynthVoice::init(Synth* synth)
 {
-    polySynth.init(synth);
+    polySynth.init(synth, &panningAmplifier);
 }
 
 PolySynth* SynthVoice::getPolySynth()

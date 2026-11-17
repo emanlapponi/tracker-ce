@@ -28,7 +28,11 @@ polysynth::AudioBufferStereoRef toStereoRef(BusInput& input)
     return { input[0], input[1] };
 }
 
-void addToBusInput(BusInput& input, const audio_block_t* left, const audio_block_t* right)
+void addToBusInput(BusInput& input,
+                   const audio_block_t* left,
+                   const audio_block_t* right,
+                   float gainLeft = 1.0f,
+                   float gainRight = 1.0f)
 {
     if (left == NULL)
     {
@@ -42,8 +46,8 @@ void addToBusInput(BusInput& input, const audio_block_t* left, const audio_block
 
     for (int i = 0; i < polysynth::kAudioBufferSize; i++)
     {
-        input[0][i] += left->data[i] * (1.0f / INT16_MAX);
-        input[1][i] += right->data[i] * (1.0f / INT16_MAX);
+        input[0][i] += left->data[i] * (gainLeft / INT16_MAX);
+        input[1][i] += right->data[i] * (gainRight / INT16_MAX);
     }
 }
 
@@ -380,7 +384,12 @@ AUDIO_CORE_RAM void PolySynth::renderParts(audio_block_t* const* trackBlocks)
               isStereo ? blockPostFaderRight : blockPostFaderLeft;
             if (routes[busIdx].sources[kBusInput] & sourceBit)
             {
-                addToBusInput(tempBufBus[busIdx], blockPostFaderLeft, postFaderRight);
+                // Tracks are tapped after their pan, so synth sources get their pan too
+                addToBusInput(tempBufBus[busIdx],
+                              blockPostFaderLeft,
+                              postFaderRight,
+                              (*panningAmplifiers)[partIdx][0].gain(),
+                              (*panningAmplifiers)[partIdx][1].gain());
             }
             if (routes[busIdx].sources[kBusSidechain] & sourceBit)
             {
@@ -437,9 +446,10 @@ PolySynth::BusRoute PolySynth::getBusRoute(int partIdx) const
     return route;
 }
 
-void PolySynth::init(Synth* trackerSynth)
+void PolySynth::init(Synth* trackerSynth, const PanningAmplifiers* panningAmplifiers)
 {
     PolySynth::trackerSynth = trackerSynth;
+    PolySynth::panningAmplifiers = panningAmplifiers;
     isBlocked = false;
 }
 
