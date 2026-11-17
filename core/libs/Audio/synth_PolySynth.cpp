@@ -127,11 +127,11 @@ AUDIO_CORE_RAM void PolySynth::renderParts(audio_block_t* const* trackBlocks)
     static std::array<BusSidechain, kSynthParts> tempBufSidechain;
 
     std::array<BusRoute, kSynthParts> routes;
-    uint16_t routedSources = 0;
+    uint16_t sources = 0;
     for (int partIdx = 0; partIdx < kSynthParts; partIdx++)
     {
         routes[partIdx] = getBusRoute(partIdx);
-        routedSources |= routes[partIdx].sources[kBusInput];
+        sources |= routes[partIdx].sources[kBusInput];
         if (routes[partIdx].isBus)
         {
             tempBufBus[partIdx][0].fill(0.0f);
@@ -139,7 +139,7 @@ AUDIO_CORE_RAM void PolySynth::renderParts(audio_block_t* const* trackBlocks)
             tempBufSidechain[partIdx].fill(0.0f);
         }
     }
-    routedTracks = routedSources & ((1u << kTrackInputs) - 1);
+    routedSources = sources;
 
     for (int partIdx = 0; partIdx < kSynthParts; partIdx++)
     {
@@ -397,12 +397,10 @@ AUDIO_CORE_RAM void PolySynth::renderParts(audio_block_t* const* trackBlocks)
             }
         }
 
-        if (!(routedSources & sourceBit))
-        {
-            transmit(blockPostFaderLeft, partIdx);
-            transmit(isStereo ? blockPostFaderRight : blockPostFaderLeft,
-                     kRightChannelOffset + partIdx);
-        }
+        // Always sent: stems and USB still need it. The engine mutes the direct mix of routed parts.
+        transmit(blockPostFaderLeft, partIdx);
+        transmit(isStereo ? blockPostFaderRight : blockPostFaderLeft,
+                 kRightChannelOffset + partIdx);
         release(blockPostFaderLeft);
         if (blockPostFaderRight != NULL)
         {

@@ -1276,22 +1276,37 @@ AUDIO_CORE_RAM void audioEngine::setSynthMacro(int synthIdx, int macroIdx, float
 
 AUDIO_CORE_RAM void audioEngine::updateTrackDirectGain(uint8_t track)
 {
-    const float gain = (routedTracks & (1 << track)) ? 0.0f : 1.0f;
+    const float gain = (routedSources & (1u << track)) ? 0.0f : 1.0f;
     mixerAndFxs.getTracksMixer(MixerAndFxChannelType::kLeft)->gain(track, gain);
     mixerAndFxs.getTracksMixer(MixerAndFxChannelType::kRight)->gain(track, gain);
 }
 
+AUDIO_CORE_RAM void audioEngine::updateSynthDirectGain(uint8_t synthIdx)
+{
+    const float gain = (routedSources & (1u << (PolySynth::kTrackInputs + synthIdx))) ? 0.0f : 1.0f;
+    mixerAndFxs.getTracksMixer(MixerAndFxChannelType::kLeft)->gain(kVoices + synthIdx, gain);
+    mixerAndFxs.getTracksMixer(MixerAndFxChannelType::kRight)->gain(kVoices + synthIdx, gain);
+}
+
 AUDIO_CORE_RAM void audioEngine::updateRoutedTracks()
 {
-    const uint8_t routed = synthVoice.getPolySynth()->getRoutedTracks();
-    const uint8_t changed = routed ^ routedTracks;
-    routedTracks = routed;
+    const uint16_t routed = synthVoice.getPolySynth()->getRoutedSources();
+    const uint16_t changed = routed ^ routedSources;
+    routedSources = routed;
 
     for (int track = 0; track < kVoices; track++)
     {
-        if (changed & (1 << track))
+        if (changed & (1u << track))
         {
             updateTrackDirectGain(track);
+        }
+    }
+
+    for (int synthIdx = 0; synthIdx < kSynthParts; synthIdx++)
+    {
+        if (changed & (1u << (PolySynth::kTrackInputs + synthIdx)))
+        {
+            updateSynthDirectGain(synthIdx);
         }
     }
 }

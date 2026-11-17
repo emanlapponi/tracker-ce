@@ -21,7 +21,8 @@ class PolySynth : public AudioStream
     void init(Synth* trackerSynth, const PanningAmplifiers* panningAmplifiers);
     void setGain(int idx, float gainDB);
     virtual void update(void) override;
-    uint8_t getRoutedTracks() const { return routedTracks; }
+    // Bits 0..7: sample tracks, 8..10: synth parts (Param::inputSource numbering)
+    uint16_t getRoutedSources() const { return routedSources; }
 
     static constexpr int kSend1Offset = 2 * kSynthParts;
     static constexpr int kSend2Offset = 3 * kSynthParts;
@@ -50,6 +51,6 @@ class PolySynth : public AudioStream
     bool isBlocked = true;
     float gainDB[kSynthParts] = {};
     uint8_t overloadCooldownBlocks = 0;
-    uint8_t routedTracks = 0;
+    uint16_t routedSources = 0;
     audio_block_t* inputQueue[2 * kTrackInputs];
 };
