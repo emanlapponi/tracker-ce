@@ -410,7 +410,9 @@ PolySynth::BusRoute PolySynth::getBusRoute(int partIdx) const
 {
     BusRoute route;
     const auto& part = trackerSynth->parts[partIdx];
-    if (part.loading.load(std::memory_order_acquire) || part.patch == nullptr)
+    // A part that is not rendered cannot take its sources, or they would go silent
+    if (part.loading.load(std::memory_order_acquire) || part.patch == nullptr ||
+        part.instrument->getVoiceCount() == 0)
     {
         return route;
     }
