@@ -644,6 +644,8 @@ class PluginAdapter
             desc.is_enum = p.isEnum ? 1 : 0;
             desc.midi_cc = p.midiCC.has_value() ? *p.midiCC : 0xFF;
             desc.invalidates_metadata = p.invalidatesOtherMetadata ? 1 : 0;
+            desc.input_source = static_cast<uint8_t>(p.inputSource + 1);
+            desc.input_sidechain = p.inputSidechain ? 1 : 0;
             g_host->meta_set_param(metaBuilder, i, &desc);
             s_formatters[i] = p.valueFormatter;
         }
@@ -838,12 +840,13 @@ class PluginAdapter
         holder->voice.onParamChange(paramId, optVal);
     }
 
-    static void voiceRenderAudio(void* v,
-                                 const PsynVoiceContext* ctx,
-                                 float* outLeft,
-                                 float* outRight,
-                                 float* const* auxBuffers,
-                                 int auxCount)
+    static void render(void* v,
+                       const PsynVoiceContext* ctx,
+                       const PsynAudioInput* in,
+                       float* outLeft,
+                       float* outRight,
+                       float* const* auxBuffers,
+                       int auxCount)
     {
         auto* holder = static_cast<VoiceHolder<VoiceClass>*>(v);
         polysynth::InstrumentVoice::InstrumentVoiceContext vctx{
@@ -854,6 +857,30 @@ class PluginAdapter
             polysynth::AudioBufferRef(outLeft, polysynth::kAudioBufferSize),
             polysynth::AudioBufferRef(outRight, polysynth::kAudioBufferSize),
         };
+        auto toBuffer = [](const float* left, const float* right)
+        {
+            std::optional<polysynth::AudioBufferStereoRef> buffer;
+            if (left != nullptr && right != nullptr)
+            {
+                buffer = polysynth::AudioBufferStereoRef{
+                    polysynth::AudioBufferRef(const_cast<float*>(left),
+                                              polysynth::kAudioBufferSize),
+                    polysynth::AudioBufferRef(const_cast<float*>(right),
+                                              polysynth::kAudioBufferSize),
+                };
+            }
+            return buffer;
+        };
+        std::optional<polysynth::AudioBufferStereoRef> inBuffer;
+        if (in != nullptr)
+        {
+            inBuffer = toBuffer(in->left, in->right);
+            if (in->sidechain != nullptr)
+            {
+                vctx.sidechainBuffer = polysynth::AudioBufferRef(
+                  const_cast<float*>(in->sidechain), polysynth::kAudioBufferSize);
+            }
+        }
         if constexpr (requires {
                           holder->voice.renderVoiceAudio(
                             vctx,
@@ -876,14 +903,33 @@ class PluginAdapter
             };
             holder->voice.renderVoiceAudio(
               vctx,
-              std::nullopt,
+              inBuffer,
               outStereo,
               std::span<polysynth::AudioBufferRef>(auxRefs, 2));
         }
         else
         {
-            holder->voice.renderVoiceAudio(vctx, std::nullopt, outStereo);
+            holder->voice.renderVoiceAudio(vctx, inBuffer, outStereo);
         }
+    }
+
+    static void voiceRenderAudio(void* v,
+                                 const PsynVoiceContext* ctx,
+                                 float* outLeft,
+                                 float* outRight,
+                                 float* const* auxBuffers,
+                                 int auxCount)
+    {
+        render(v, ctx, nullptr, outLeft, outRight, auxBuffers, auxCount);
+    }
+
+    static void voiceRenderAudioIn(void* v,
+                                   const PsynVoiceContext* ctx,
+                                   const PsynAudioInput* in,
+                                   float* outLeft,
+                                   float* outRight)
+    {
+        render(v, ctx, in, outLeft, outRight, nullptr, 0);
     }
 
     static void voiceRenderPostProcess(void* v,
@@ -990,6 +1036,7 @@ class PluginAdapter
             .voice_clear_previous_notes = &voiceClearPreviousNotes,
             .voice_reset = &voiceReset,
             .voice_tick_idle = kOverridesTickIdle ? &voiceTickIdle : nullptr,
+            .voice_render_audio_in = &voiceRenderAudioIn,
         };
         return &kApi;
     }

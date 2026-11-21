@@ -51,6 +51,7 @@ class AudioAmplifier : public AudioStream
         previousMultiplier = multiplier;
         multiplier = gain * kUnityGain;
     }
+    float gain() const { return multiplier / kUnityGain; }
 
   private:
     int32_t multiplier;

@@ -52,6 +52,7 @@ class audioEngine
     void connectInputToOutput(AudioInput* input, AudioOutput* output);
     void connectMixerToOutput(MixerAndFxs<kVoices>* mixerAndFxs, AudioOutput* output);
 #ifdef FEATURE_SYNTH
+    void connectVoiceToSynth(AudioVoice* voice, SynthVoice* synth, int idx);
     void connectSynthToMixer(MixerAndFxs<kVoices>* mixerAndFxs, SynthVoice* synth);
     void connectSynthToExportQueue(SynthVoice* synth, ExportQueues* exportQueues);
     void connectSynthToOutput(SynthVoice* synth, AudioOutput* output);
@@ -194,6 +195,9 @@ class audioEngine
 
   private:
 #ifdef FEATURE_SYNTH
+    void updateRoutedTracks();
+    void updateTrackDirectGain(uint8_t track);
+    void updateSynthDirectGain(uint8_t synthIdx);
     void updateSynthParams();
     void updateSynthParam(int synthIdx, SynthParam param);
     void applySynthValue(int synthIdx, SynthParam param, float value);
@@ -236,6 +240,7 @@ class audioEngine
 
 #ifdef FEATURE_SYNTH
     SynthVoice synthVoice;
+    uint16_t routedSources = 0; // see PolySynth::getRoutedSources()
     std::optional<float> synthParams[kSynthParts][SynthParam::kSynthParamsCount]
                                     [SynthValuesSource::kSynthValuesSourceCount] = {};
     std::bitset<SynthParam::kSynthParamsCount>

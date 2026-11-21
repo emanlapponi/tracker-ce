@@ -58,7 +58,9 @@ class SynthImpl
     void renderAudioBuffer(AudioBufferStereoRef buffer) override;
     void renderAudioBuffer(AudioBufferStereoRef bufferMain,
                            std::span<AudioBufferRef> bufferAux,
-                           int instrumentId) override;
+                           int instrumentId,
+                           std::optional<AudioBufferStereoRef> inputBuffer,
+                           std::optional<AudioBufferRef> sidechainBuffer) override;
 
     [[nodiscard]] bool isInstrumentIdle(int instrumentId) const override;
     bool prepareSilentInstrument(int instrumentId) override;

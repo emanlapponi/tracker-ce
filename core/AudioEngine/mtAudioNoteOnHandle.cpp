@@ -465,8 +465,12 @@ AUDIO_CORE_RAM void playerEngine::handleNoteOnPanning()
     assert(playMemPtr[0] != nullptr);
     if (!playMemPtr[0]->isPlaying()) // todo: see handleNoteOnGain() description
     {
+#ifdef FEATURE_SYNTH
+        engine.updateTrackDirectGain(nChannel); // keeps routed tracks muted
+#else
         engine.getMixerAndFx()->getTracksMixer(MixerAndFxChannelType::kLeft)->gain(nChannel, 1.0f);
         engine.getMixerAndFx()->getTracksMixer(MixerAndFxChannelType::kRight)->gain(nChannel, 1.0f);
+#endif
     }
 
     setRefreshBit(PANNING_MASK);

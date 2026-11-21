@@ -595,9 +595,11 @@ void InstrumentImpl::handleNoteOff(const MidiEvent& event, int sourceId)
 
 void InstrumentImpl::renderAudioBuffer(std::optional<AudioBufferStereoRef> inputBuffer,
                                        AudioBufferStereoRef outputBuffer,
-                                       std::span<AudioBufferRef> auxOutBuffer)
+                                       std::span<AudioBufferRef> auxOutBuffer,
+                                       std::optional<AudioBufferRef> sidechainBuffer)
 {
     InstrumentVoice::InstrumentVoiceContext ctx = { getTempo() };
+    ctx.sidechainBuffer = sidechainBuffer;
 
     for (auto& auxBuf : auxOutBuffer)
     {

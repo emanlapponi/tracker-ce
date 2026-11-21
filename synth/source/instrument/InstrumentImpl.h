@@ -70,7 +70,8 @@ class InstrumentImpl final
     void onPatchReset() override;
     void renderAudioBuffer(std::optional<AudioBufferStereoRef> inputBuffer,
                            AudioBufferStereoRef outputBuffer,
-                           std::span<AudioBufferRef> auxOutBuffer);
+                           std::span<AudioBufferRef> auxOutBuffer,
+                           std::optional<AudioBufferRef> sidechainBuffer = std::nullopt);
 
     [[nodiscard]] bool isIdle() const;
     [[nodiscard]] bool prepareSilentBlock();

@@ -63,10 +63,15 @@
 	* Added an opt-in USB CDC serial console (`ENABLE_DEV_CONSOLE` when a `/.develop` file is present on the SD card) with host automation commands (`ping`, `storage on|off`, `flash <name>`, `reboot`, `help`) and a ring-buffered `ENABLE_LOG` build flag that preserves release optimization levels.
 	* With `ENABLE_DEV_CONSOLE`, CPU faults report `@fault pc=... lr=...` and a rough call chain over the serial console instead of freezing silently. See [`docs/developer_guide.md`](docs/developer_guide.md).
 
-12. **Pattern View Note Display Option (All 3 Devices)**
+12. **`BUS` Insert Effect Engine & Synth SDK Audio Input (Tracker+ & Tracker Mini)**
+	* Added **`BUS`** (`/Synths/BUS.psyn`), an insert effect synth that takes over selected sample tracks and lower-numbered synth parts instead of mixing them directly, and runs them through a limiter (`Threshold`, `Attack`, `Release`).
+	* **Sidechain Ducking**: A separate `Sidechain` section drives the limiter from other tracks or synths (summed to mono) while they stay in the normal mix, so a kick can duck a pad.
+	* **Plugin Audio Input**: `.psyn` engines packaged with `--audio-input 1` now receive host audio through `voice_render_audio_in`, and choose their own routed sources from patch params. Existing plugins are unaffected. See [`docs/custom_synth_sdk.md`](docs/custom_synth_sdk.md).
+
+13. **Pattern View Note Display Option (All 3 Devices)**
 	* Added **`Config → General → Note display`** to choose how notes are displayed in Pattern View: **`Original`** (`C4`, `C#4`, default) or **`Traditional`** (`C-4`, `C#4`).
 
-13. **SD-Card Random Name Wordlists (All 3 Devices)**
+14. **SD-Card Random Name Wordlists (All 3 Devices)**
 	* Moved the random name generator wordlists to `/Words/adjectives.txt` and `/Words/nouns.txt` on the microSD card (one word per line, with a built-in fallback list when the files are absent; initial files provided in [`sd-card/Words/`](sd-card/Words/)), freeing some Flash space on Original Tracker and letting users customize their own wordlists.
 
 ### Changed & Fixed

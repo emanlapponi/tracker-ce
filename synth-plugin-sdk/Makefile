@@ -38,7 +38,7 @@ LDFLAGS       := -nostartfiles --specs=nano.specs \
                  -Wl,--wrap=malloc -Wl,--wrap=free -Wl,--wrap=calloc \
                  -Wl,--wrap=_malloc_r -Wl,--wrap=_free_r -Wl,--wrap=_calloc_r
 
-all: $(BUILD_DIR)/CHIP.psyn
+all: $(BUILD_DIR)/CHIP.psyn $(BUILD_DIR)/BUS.psyn
 
 $(BUILD_DIR)/CHIP.elf: $(SDK_DIR)/engines/chip.cpp $(SDK_DIR)/include/psyn/psyn_plugin.h $(SDK_DIR)/include/psyn/psyn_cpp_bridge.h $(SDK_DIR)/tools/psyn.ld
 	@mkdir -p $(BUILD_DIR)
@@ -64,6 +64,26 @@ $(BUILD_DIR)/CHIP.psyn: $(BUILD_DIR)/CHIP.elf $(SDK_DIR)/tools/psyn_builder.py
 		--has-sample-slots $(HAS_SAMPLE_SLOTS) \
 		--supports-idle-sleep $(SUPPORTS_IDLE_SLEEP) \
 		--has-voice-tick-idle $(HAS_VOICE_TICK_IDLE)
+
+$(BUILD_DIR)/BUS.elf: $(SDK_DIR)/engines/bus.cpp $(SDK_DIR)/include/psyn/psyn_plugin.h $(SDK_DIR)/include/psyn/psyn_cpp_bridge.h $(SDK_DIR)/tools/psyn.ld
+	@mkdir -p $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $< $(LDFLAGS) -o $@
+
+$(BUILD_DIR)/BUS.psyn: $(BUILD_DIR)/BUS.elf $(SDK_DIR)/tools/psyn_builder.py
+	$(PYTHON) $(SDK_DIR)/tools/psyn_builder.py \
+		--elf $< \
+		--out $@ \
+		--code-name "BUS" \
+		--display-name "Bus" \
+		--patch-folder "BUS" \
+		--type-id-wave 0 \
+		--type-id-play-tracker 0 \
+		--default-voices 1 \
+		--max-voices 1 \
+		--output-channels 2 \
+		--renders-aux 0 \
+		--has-sample-slots 0 \
+		--audio-input 1
 
 clean:
 	rm -rf $(BUILD_DIR)
