@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "ThemeManager.h"
+#include "SdTextFile.h"
 #include "Platform.h"
 #include "core/interface.h"
 #include "display.h"
@@ -1470,34 +1471,9 @@ bool ThemeManager::applyTheme(uint8_t index)
         return false;
     }
 
-    auto [isOpen, file] = fs->openFile(themeFilePaths[index], FileSystem::FileOpenMode::kRead);
-    if (!isOpen || !file)
-    {
-        const char* altPath = (themeFilePaths[index][0] == '/') ? &themeFilePaths[index][1] : themeFilePaths[index];
-        std::tie(isOpen, file) = fs->openFile(altPath, FileSystem::FileOpenMode::kRead);
-    }
-    if (!isOpen || !file)
-    {
-        currentThemeIndex = 0;
-        display.setTheme(0);
-        mtInterface.refreshInterfaceControlsColors();
-        return false;
-    }
-
-    int32_t bytesRead = fs->readFile(s_fileReadBuffer, sizeof(s_fileReadBuffer) - 1, file);
-    fs->closeFile(file);
-
-    if (bytesRead <= 0)
-    {
-        currentThemeIndex = 0;
-        display.setTheme(0);
-        mtInterface.refreshInterfaceControlsColors();
-        return false;
-    }
-
-    s_fileReadBuffer[bytesRead] = '\0';
-
-    if (!parseThemeJson(s_fileReadBuffer, static_cast<size_t>(bytesRead), themeCustom))
+    size_t bytesRead = 0;
+    if (!SdTextFile::readAll(fs, themeFilePaths[index], s_fileReadBuffer, sizeof(s_fileReadBuffer), &bytesRead) ||
+        !parseThemeJson(s_fileReadBuffer, bytesRead, themeCustom))
     {
         currentThemeIndex = 0;
         display.setTheme(0);

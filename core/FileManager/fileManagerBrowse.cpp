@@ -91,6 +91,8 @@ void parseFolderName(FileSystem* fileSystem,
 
 bool cFileManager::browseSdCard(uint8_t* index)
 {
+    stopAutosave();
+
     if (status != fmIdle && status != fmSavingProjectToWorkspace)
         return false;
     if (currentOperation != fmNoOperation && currentOperation != fmSaveWorkspaceProject)
@@ -438,7 +440,7 @@ void cFileManager::goUpInActualPath()
 void cFileManager::browseFirmwaresLocation()
 {
 
-    uint8_t locationFileCount = fileSystem->createFilesList(
+    int locationFileCount = fileSystem->createFilesList(
       "Firmware", 0, firmwaresList, list_length_max, 6000, fileSystem->enListFileFilter_firmware);
 
     if (locationFileCount == fileSystem->kListError)
@@ -449,7 +451,7 @@ void cFileManager::browseFirmwaresLocation()
 
     std::sort(firmwaresList,
               firmwaresList + locationFileCount,
-              [](char* a, char* b) { return !compareStrings(a, b); });
+              [](char* a, char* b) { return compareStrings(b, a); });
 
     firmwaresListLength = locationFileCount;
 
@@ -460,6 +462,8 @@ void cFileManager::browseFirmwaresLocation()
 
 bool cFileManager::browseFirmwares()
 {
+    stopAutosave();
+
     status = fmBrowsingFirmwares;
     currentOperationStep = 0;
     currentOperation = fmBrowseFirmwares;
@@ -524,6 +528,8 @@ void cFileManager::browseGamesLocation()
 
 bool cFileManager::browseGames()
 {
+    stopAutosave();
+
     if (status != fmIdle && status != fmSavingProjectToWorkspace)
         return false;
     if (currentOperation != fmNoOperation && currentOperation != fmSaveWorkspaceProject)

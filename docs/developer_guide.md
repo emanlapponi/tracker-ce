@@ -102,6 +102,8 @@ Full details in [`docs/modular_effects_system.md`](modular_effects_system.md).
     * `TrackerPlus` (Tracker+)
     * `TrackerMini` (Tracker Mini)
   * **31-Character Maximum on Original Tracker**: `PlatformImpl::runBootloader()` ([`platforms/mk66/source/PlatformImpl.cpp`](../platforms/mk66/source/PlatformImpl.cpp) / [`platforms/imx/source/PlatformImpl.cpp`](../platforms/imx/source/PlatformImpl.cpp)) writes the selected `.ptf` filename to `/Firmware/_fwinfo`. The Original Tracker's on-chip bootloader reads `/Firmware/_fwinfo` into a 32-byte `char[32]` buffer. Filenames of 32+ characters overwrite the trailing `\0` byte and cause garbage symbols on the bootloader flashing screen. Always keep `.ptf` filenames `<= 31` characters.
+* **Reading Text Files from SD (`SdTextFile`)**:
+  * Use [`SdTextFile`](../core/include/SdTextFile.h) ([`core/source/SdTextFile.cpp`](../core/source/SdTextFile.cpp)) when reading SD text/JSON/wordlist files instead of duplicating `FileSystem::openFile` + leading-`/` fallback + `closeFile` boilerplate: `SdTextFile::openWithFallback()` retries without a leading `/`, `SdTextFile::readAll()` reads and null-terminates into a caller buffer (used by `ThemeManager`), `SdTextFile::readRandomWord()` samples a word from a wordlist file using a 96-byte stack buffer (`mtRandomNameGenerator`), and `SdScopedFile` provides RAII `closeFile()` cleanup.
 
 ---
 

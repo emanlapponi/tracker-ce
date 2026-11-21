@@ -83,19 +83,17 @@ jobs:
             }
 
             const fwUrl = `https://nightly.link/${owner}/${repo}/actions/runs/${runId}/polyend-tracker-ce-firmware.zip`;
-            const synthsUrl = `https://nightly.link/${owner}/${repo}/actions/runs/${runId}/polyend-tracker-ce-synths.zip`;
-            const fxUrl = `https://nightly.link/${owner}/${repo}/actions/runs/${runId}/polyend-tracker-ce-effects.zip`;
+            const sdCardUrl = `https://nightly.link/${owner}/${repo}/actions/runs/${runId}/polyend-tracker-ce-sd-card.zip`;
             const marker = '<!-- polyend-tracker-ce-pr-firmware -->';
 
             const body = [
               marker,
-              '### Polyend Tracker CE Test Firmware, Synth Engines & Sample Editor Effects',
+              '### Polyend Tracker CE Test Firmware & SD Card Content',
               '',
-              'This pull request passed all build checks. You can download and test the built firmware for **Original Tracker**, **Tracker+**, and **Tracker Mini** (`Build: ' + shortSha + '`), the `.psyn` Synth engines, and the `.ptfx` Sample Editor plugins directly using the links below (no GitHub account required):',
+              'This pull request passed all build checks. You can download and test the built firmware for **Original Tracker**, **Tracker+**, and **Tracker Mini** (`Build: ' + shortSha + '`) and the matching SD card content (`/Words`, `/Effects`, `/Synths`) directly using the links below (no GitHub account required):',
               '',
               `* **[Download Firmware (.zip)](${fwUrl})**`,
-              `* **[Download Synth Engines (.zip)](${synthsUrl})**`,
-              `* **[Download Sample Editor Effects (.zip)](${fxUrl})**`,
+              `* **[Download SD Card Content (.zip)](${sdCardUrl})** (\`/Words\`, \`/Effects\`, \`/Synths\`)`,
               '',
               '<details>',
               '<summary><b>How to Install & Flash on Your Tracker</b></summary>',
@@ -109,15 +107,11 @@ jobs:
               '3. Insert the microSD card into your Tracker, navigate to **Config → Firmware → Firmware update**, select the `.ptf` file, and confirm.',
               `4. Once rebooted, you can verify you are running this PR build under **Config → Firmware** (\`Build: ${shortSha}\`).`,
               '',
-              '### 2. Installing Sample Editor Effects (`.ptfx`)',
-              `1. Download and unzip **[polyend-tracker-ce-effects.zip](${fxUrl})**.`,
-              '2. Copy the **`Effects/`** folder to the root directory of your Tracker\'s microSD card so your `.ptfx` plugins are located at **`/Effects/*.ptfx`**.',
+              '### 2. Installing SD Card Content (`/Words`, `/Effects`, `/Synths`)',
+              `1. Download and unzip **[polyend-tracker-ce-sd-card.zip](${sdCardUrl})**.`,
+              '2. Copy **`Words/`**, **`Effects/`**, and **`Synths/`** (Tracker+ & Tracker Mini) to the root directory of your Tracker\'s microSD card.',
               '',
-              '### 3. Installing Synth Engines (`.psyn` — Tracker+ & Tracker Mini)',
-              `1. Download and unzip **[polyend-tracker-ce-synths.zip](${synthsUrl})**.`,
-              '2. Copy the **`Synths/`** folder to the root directory of your Tracker+ or Tracker Mini microSD card so your `.psyn` plugins are located at **`/Synths/*.psyn`**.',
-              '',
-              '### 4. Emergency Recovery (Just in Case)',
+              '### 3. Emergency Recovery (Just in Case)',
               'The Tracker\'s bootloader is hardware-isolated from the firmware. If a test build ever fails to boot:',
               '1. Place a known-good, stable `.ptf` firmware file inside the **`/Firmware/`** folder on your microSD card (ideally as the only `.ptf` file in that folder).',
               '2. Insert the microSD card and power on your Tracker.',

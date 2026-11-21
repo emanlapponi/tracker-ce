@@ -103,7 +103,7 @@ class Si4703 : public I2cDevice
 
     seek_control_t seek_control;
 
-    void setRegion(radio_region_t region, uint8_t init);
+    void setRegion(radio_region_t region, uint8_t init, bool ignoreErrors = false);
     float freqSpacing_MHz;
     float freqBottomBase_MHz;
 

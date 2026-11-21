@@ -3,24 +3,23 @@
 
 #include "mtStructs.h"
 
-constexpr uint32_t RANDOM_NAME_TABS_SIZE = 1006;
 constexpr uint8_t RANDOM_NAME_WORD_1_MAX_SIZE = 30;
 constexpr uint8_t RANDOM_NAME_WORD_2_MAX_SIZE = 30;
 constexpr uint8_t RANDOM_NAME_MAX_SIZE =
   RANDOM_NAME_WORD_1_MAX_SIZE + RANDOM_NAME_WORD_2_MAX_SIZE + 1;
 
-extern const char randomNameWord1Tab[];
-extern const char randomNameWord2Tab[];
-
+class FileSystem;
 class Timer;
 
 class mtRandomNameGenerator
 {
   public:
+    void init(FileSystem* fs) { fileSystem_ = fs; }
     const char* getRandomName(Timer* timer);
 
   private:
-    char randomName[RANDOM_NAME_MAX_SIZE];
+    FileSystem* fileSystem_ = nullptr;
+    char randomName[RANDOM_NAME_MAX_SIZE]{};
 };
 
 extern mtRandomNameGenerator randomNameGenerator;

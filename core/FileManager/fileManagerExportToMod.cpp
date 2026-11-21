@@ -62,6 +62,8 @@ void cFileManager::updateExportModFile()
 
 uint8_t cFileManager::exportItFile()
 {
+    stopAutosave();
+
     if (status != fmIdle && status != fmSavingProjectToWorkspace)
         return false;
     if (currentOperation != fmNoOperation && currentOperation != fmSaveWorkspaceProject)

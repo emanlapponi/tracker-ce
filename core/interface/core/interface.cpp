@@ -223,6 +223,7 @@ void Interface::doStartTasks()
     interfaceGlobals.currentFirmwareBuild = platform->getSystemInfo()->buildId;
 
     ThemeManager::init(platform);
+    randomNameGenerator.init(platform->getFileSystem());
     refreshThemeAndFontMenuOptions();
 
     songTimer.initControls();

@@ -18,6 +18,24 @@ constexpr uint32_t lofiSampleRate = targetSampleRate / 2;
 __NOINIT(EXTERNAL_RAM)
 static FileManagerOperation::SampleLoadData sampleImportDataBuff[48];
 
+// The slots of an import are given their place in sample memory, and the instruments behind
+// them are moved to make room, before the first file is loaded. A slot that then gets no sample
+// is emptied here and the gap is closed, as after a delete. Left open, the gap would not be
+// counted as used memory and a later import could be placed past the end of sample memory.
+static void releaseSlotsWithoutSample(int firstSlot, int lastSlot)
+{
+    for (int slot = firstSlot; slot <= lastSlot; slot++)
+    {
+        uint32_t sampleSize = newFileManager.getSampleMemorySize(slot, slot);
+
+        newFileManager.completeLoadedInstrumentStruct(slot, false);
+        engine.clearBlockedInstrument(slot);
+
+        newFileManager.moveSampleMemory(newFileManager.calcFirstSlotToMoveInMemory(slot + 1),
+                                        -(int32_t)sampleSize);
+    }
+}
+
 void SampleImport::update() // fmImportSamplesToWorkspace
 {
     SampleImportStep nextStep = operationStep;
@@ -90,6 +108,12 @@ void SampleImport::update() // fmImportSamplesToWorkspace
                 }
                 memoryToImportDone += fileTransfer.getBytesComplited();
                 fileTransfer.clearBytesComplited();
+            }
+            else if (newFileManager.getCurrentOperation() != fmImportSamplesToWorkspace)
+            {
+                // the save failed and ended the import; this sample is loaded, the rest is not
+                engine.clearBlockedInstrument(currentInstrument);
+                releaseSlotsWithoutSample(currentInstrument + 1, importEndSlot);
             }
             break;
         }
@@ -742,12 +766,18 @@ bool SampleImport::loadSampleDataToMemeory(int idx,
     }
     else if (loadStatus == fileTransferFileNoExist || loadStatus == fileTransferFileNoValid)
     {
-        newFileManager.completeLoadedInstrumentStruct(idx, false);
+        releaseSlotsWithoutSample(idx, idx);
+
+        // closing the gap released the slots behind this one, which are still to be loaded
+        for (int slot = idx + 1; slot <= importEndSlot; slot++)
+        {
+            engine.setBlockedInstrument(slot);
+        }
         return true;
     }
     else if (loadStatus >= fileTransferError)
     {
-        newFileManager.completeLoadedInstrumentStruct(idx, false);
+        releaseSlotsWithoutSample(idx, importEndSlot);
         stopOperationWithError(fmImportSamplesError);
     }
 

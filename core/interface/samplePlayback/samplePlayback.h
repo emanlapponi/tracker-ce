@@ -32,6 +32,7 @@ class cSamplePlayback : public ModuleBase
     };
 
     static constexpr int kNoTrack = -1;
+    static constexpr int kNoInstrument = -1;
 
     virtual void update();
     virtual void start(uint32_t options);
@@ -92,6 +93,7 @@ class cSamplePlayback : public ModuleBase
     void showSlicesPlayThruValue();
 
     void onEndTrackDisplay();
+    void clearDisplayedTrack();
 
     void noteOnHandle(uint8_t channel, uint8_t note, uint8_t velocity, int16_t source);
     void noteOffHandle(uint8_t channel, uint8_t note, uint8_t velocity, int16_t source);
@@ -181,7 +183,8 @@ class cSamplePlayback : public ModuleBase
     elapsedMicros refreshPlayProgressValue = 0;
     float playPitch = 1.0;
     bool sliceScreenMode2;
-    int8_t displayedTrack = -1;
+    int8_t displayedTrack = kNoTrack;
+    int16_t displayedInstrument = kNoInstrument;
 
     strInstrument* editorInstrument = nullptr;
     uint32_t lastSampleLength = 0xFFFFFFFF;

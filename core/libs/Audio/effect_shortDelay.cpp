@@ -73,6 +73,12 @@ AUDIO_CORE_FLASH void AudioEffectShortDelay::setRate(uint8_t syncRateIdx)
     if (!isSync)
         return;
 
+    // The index is six bits of a project value, and nothing checks it when a project is loaded.
+    constexpr uint8_t kLastSyncRateIdx =
+      sizeof(tempoSyncRatesShortDelay) / sizeof(tempoSyncRatesShortDelay[0]) - 1;
+    if (syncRateIdx > kLastSyncRateIdx)
+        syncRateIdx = kLastSyncRateIdx;
+
     float tempo = sequencer.getCurrentTempo();
 
     float freq = (tempo / 15.0f); // *4,bo  beat = 4 step i /60, bo min = 60s

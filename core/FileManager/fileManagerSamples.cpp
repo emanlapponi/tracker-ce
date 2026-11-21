@@ -135,8 +135,12 @@ bool cFileManager::saveSampleDataToWorkspace(int idx)
         changesFlags.instrument[idx] = 1;
 
         // do instrument struct save
-        bool result = saveInstrumentStructToWorkspace(idx);
-        (void)result;
+        // Without the file there is nothing to write the sample into, and trying again
+        // on the next update would fail the same way for ever.
+        if (!saveInstrumentStructToWorkspace(idx))
+        {
+            stopOperationWithError(fmSaveError);
+        }
     }
     else if (saveStatus >= fileTransferError)
     {

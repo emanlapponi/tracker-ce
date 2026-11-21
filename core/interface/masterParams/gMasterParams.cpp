@@ -1290,6 +1290,11 @@ void cMasterParams::showDelaySyncEnable()
 void cMasterParams::showDelayRate()
 {
     uint8_t rateIdx = (mtProject.values.delayParams & (0b00111111));
+    // The index is six bits of a project value, and nothing checks it when a project is loaded.
+    // The delay uses its last rate for such a value, so show that one.
+    constexpr uint8_t kLastRateIdx = sizeof(delaySyncRates) / sizeof(delaySyncRates[0]) - 1;
+    if (rateIdx > kLastRateIdx)
+        rateIdx = kLastRateIdx;
 
     display.setControlValue(delaySyncRateList, rateIdx);
     display.refreshControl(delaySyncRateList);

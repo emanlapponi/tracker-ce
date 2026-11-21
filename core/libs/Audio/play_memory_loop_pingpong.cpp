@@ -240,6 +240,9 @@ AUDIO_CORE_RAM audio_block_t* AudioPlayMemory::updateLoopPingPongNormal()
 
         return block;
     }
+
+    release(block);
+    return nullptr;
 }
 AUDIO_CORE_RAM audio_block_t* AudioPlayMemory::updateLoopPingPongReverse()
 {

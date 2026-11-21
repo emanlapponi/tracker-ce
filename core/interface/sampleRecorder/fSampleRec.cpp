@@ -110,6 +110,21 @@ void turnOffRecorder();
 
 char recordingDirPath[30];
 
+static int calcMaxRadioChannel(float baseFreq, float spacing)
+{
+    if (spacing <= 0.0f)
+    {
+        return 0;
+    }
+
+    return (int)((Radio::kMaxAudioFrequencyMHz - baseFreq) / spacing + 0.001f);
+}
+
+static int calcRadioChannel(float freq, float baseFreq, float spacing)
+{
+    return (int)((freq - baseFreq) / spacing + 0.5f);
+}
+
 void cSampleRecorder::update()
 {
     if (waitForPreRollEnd == true)
@@ -356,6 +371,20 @@ void cSampleRecorder::start(uint32_t options)
     {
         recorderConfig.radioFreq = radio->getBaseFrequency();
         radioFreqBarVal = 0;
+    }
+    else
+    {
+        float radioBottomFreq = radio->getBaseFrequency();
+        float radioSpacing = radio->getSpacing();
+        if (radioSpacing > 0.0f)
+        {
+            int maxChannel = calcMaxRadioChannel(radioBottomFreq, radioSpacing);
+            int channel = clamp<int>(
+              calcRadioChannel(recorderConfig.radioFreq, radioBottomFreq, radioSpacing),
+              0,
+              maxChannel);
+            recorderConfig.radioFreq = radioBottomFreq + (channel * radioSpacing);
+        }
     }
 
     radio->setFrequency(recorderConfig.radioFreq);
@@ -2322,8 +2351,16 @@ static void functSwitchModule(uint8_t button)
 void cSampleRecorder::calcRadioFreqBarVal()
 {
     float radioBottomFreq = radio->getBaseFrequency();
-    radioFreqBarVal = ((recorderConfig.radioFreq - radioBottomFreq) * 100) /
-                      (Radio::kMaxAudioFrequencyMHz - radioBottomFreq);
+    float radioSpacing = radio->getSpacing();
+    int maxChannel = calcMaxRadioChannel(radioBottomFreq, radioSpacing);
+    float radioTopFreq = (maxChannel > 0) ? (radioBottomFreq + maxChannel * radioSpacing)
+                                          : (float)Radio::kMaxAudioFrequencyMHz;
+    radioFreqBarVal = clamp<int>(
+      (int)(((recorderConfig.radioFreq - radioBottomFreq) * 100.0f) /
+              (radioTopFreq - radioBottomFreq) +
+            0.5f),
+      0,
+      100);
 }
 
 void cSampleRecorder::calcLevelBarVal()
@@ -2411,12 +2448,18 @@ void cSampleRecorder::changeRadioFreqBar(int16_t val)
     {
         float radioBottomFreq = radio->getBaseFrequency();
         float radioSpacing = radio->getSpacing();
-        float newFreq = recorderConfig.radioFreq;
+        if (radioSpacing <= 0.0f)
+        {
+            return;
+        }
 
-        newFreq = clamp(
-          newFreq + (val * radioSpacing), radioBottomFreq, (float)Radio::kMaxAudioFrequencyMHz);
+        int maxChannel = calcMaxRadioChannel(radioBottomFreq, radioSpacing);
+        int currentChannel =
+          calcRadioChannel(recorderConfig.radioFreq, radioBottomFreq, radioSpacing);
+        int newChannel = clamp<int>(currentChannel + val, 0, maxChannel);
+        float newFreq = radioBottomFreq + (newChannel * radioSpacing);
 
-        if (newFreq != recorderConfig.radioFreq)
+        if (newChannel != currentChannel || newFreq != recorderConfig.radioFreq)
         {
             if (radio->setFrequency(newFreq))
             {

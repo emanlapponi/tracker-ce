@@ -14,8 +14,7 @@ Built directly from the original Polyend firmware source code, Tracker CE opens 
 Automatically built from the latest changes in `main` (for all 3 devices):
 
 * Download the latest [Beta Firmware builds (`.zip`)](https://nightly.link/polyend/tracker-ce/workflows/build.yml/main/polyend-tracker-ce-firmware.zip)
-* Download the latest [Synth Engines (`.zip`)](https://nightly.link/polyend/tracker-ce/workflows/build.yml/main/polyend-tracker-ce-synths.zip)
-* Download the latest [Sample Editor Effects (`.zip`)](https://nightly.link/polyend/tracker-ce/workflows/build.yml/main/polyend-tracker-ce-effects.zip)
+* Download the latest [SD Card Content (`.zip`)](https://nightly.link/polyend/tracker-ce/workflows/build.yml/main/polyend-tracker-ce-sd-card.zip) (`/Words`, `/Effects`, `/Synths`)
 * See [`UPCOMING.md`](UPCOMING.md) to find out what's new in these Beta Builds.
 
 ---

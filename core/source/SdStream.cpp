@@ -383,7 +383,7 @@ void SdStream::switchBuffer()
     Buffer temp = readBuffer;
     readBuffer = writeBuffers[kNextReadBufferIdx];
 
-    memmove(&writeBuffers[0], &writeBuffers[1], sizeof(Buffer) * kWriteBuffers - 1);
+    memmove(&writeBuffers[0], &writeBuffers[1], sizeof(Buffer) * (kWriteBuffers - 1));
     writeBuffers[kWriteBuffers - 1] = temp;
 
     ENABLE_AUDIO_INTERRUPTS();

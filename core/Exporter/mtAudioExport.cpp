@@ -328,8 +328,14 @@ void mtAudioExport::saveMasterBufferToSD(uint8_t closeFile)
     if (blocksBuffered >= maxBlocksForStem)
         blocksBuffered = maxBlocksForStem;
 
-    [[maybe_unused]] auto [isOpen, fileHandle] = fileSystem->openFile(
-      stemsPaths[stem_master], FileSystem::FileOpenMode::kWriteCreateNew, &wavStemsFile);
+    // Only the first flush may create the file. Creating it again truncates it, and what
+    // the earlier flushes wrote then depends on the card handing out the same clusters.
+    const FileSystem::FileOpenMode openMode = (bytesWrittenInStem[stem_master] == 0)
+                                                ? FileSystem::FileOpenMode::kWriteCreateNew
+                                                : FileSystem::FileOpenMode::kWriteOpen;
+
+    [[maybe_unused]] auto [isOpen, fileHandle] =
+      fileSystem->openFile(stemsPaths[stem_master], openMode, &wavStemsFile);
 
     if (blocksBuffered > 0)
     {

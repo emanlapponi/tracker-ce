@@ -685,11 +685,15 @@ void cPatternEditor::refreshPattern()
 
             if (seqStep.note >= 0)
             {
-                row.note[0] = mtNotes[seqStep.note][0];
-                row.note[1] = mtNotes[seqStep.note][1];
-                row.note[2] = mtNotes[seqStep.note][2];
-                row.note[3] = mtNotes[seqStep.note][3];
-                row.note[4] = mtNotes[seqStep.note][4];
+                const char* noteName =
+                  (mtConfig.general.noteDisplayMode == NoteDisplayMode::kNoteDisplayTraditional)
+                    ? mtNotesTraditional[seqStep.note]
+                    : mtNotes[seqStep.note];
+                row.note[0] = noteName[0];
+                row.note[1] = noteName[1];
+                row.note[2] = noteName[2];
+                row.note[3] = noteName[3];
+                row.note[4] = noteName[4];
                 showInstrument = true;
             }
             else if (seqStep.note == Sequencer::STEP_NOTE_OFF_DEFAULT)

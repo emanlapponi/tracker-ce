@@ -229,6 +229,9 @@ AUDIO_CORE_RAM audio_block_t* AudioPlayMemory::updateSingleShotNormal()
             voiceStreamManager.notifyNoteOff((uint8_t)voiceIndex);
         return block;
     }
+
+    release(block);
+    return nullptr;
 }
 AUDIO_CORE_RAM audio_block_t* AudioPlayMemory::updateSingleShotReverse()
 {
@@ -380,4 +383,7 @@ AUDIO_CORE_RAM audio_block_t* AudioPlayMemory::updateSingleShotReverse()
             voiceStreamManager.notifyNoteOff((uint8_t)voiceIndex);
         return block;
     }
+
+    release(block);
+    return nullptr;
 }

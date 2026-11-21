@@ -16,19 +16,32 @@ AUDIO_CORE_FLASH void AudioPlayMemory::playWavetable(uint8_t instrIdx, int8_t no
     currentInstrIdxInPlay = instrIdx;
     currentInstrIdx = instrIdx;
 
-    switch (mtProject.instrument[instrIdx].sample.wavetable_window_size)
+    uint16_t windowSize = mtProject.instrument[instrIdx].sample.wavetable_window_size;
+    const float* newWtNotes = nullptr;
+    switch (windowSize)
     {
-        case 32: wt_notes = wt32Note; break;
-        case 64: wt_notes = wt64Note; break;
-        case 128: wt_notes = wt128Note; break;
-        case 256: wt_notes = wt256Note; break;
-        case 512: wt_notes = wt512Note; break;
-        case 1024: wt_notes = wt1024Note; break;
-        case 2048: wt_notes = wt2048Note; break;
+        case 32: newWtNotes = wt32Note; break;
+        case 64: newWtNotes = wt64Note; break;
+        case 128: newWtNotes = wt128Note; break;
+        case 256: newWtNotes = wt256Note; break;
+        case 512: newWtNotes = wt512Note; break;
+        case 1024: newWtNotes = wt1024Note; break;
+        case 2048: newWtNotes = wt2048Note; break;
         default: break;
     }
 
     refreshStartParameters();
+
+    // The playhead is wrapped by one window per sample, which only holds while the pitch step is
+    // shorter than the window. That is true for the window sizes that have a pitch table. With
+    // any other size, 0 in particular, the playhead would leave the sample.
+    if (newWtNotes == nullptr || windowSize > currentSampleLength)
+    {
+        AudioInterrupts();
+        return;
+    }
+
+    wt_notes = newWtNotes;
 
     constrainCurrentTune(note);
 
@@ -40,7 +53,8 @@ AUDIO_CORE_FLASH void AudioPlayMemory::playWavetable(uint8_t instrIdx, int8_t no
 
     lastNote = note;
 
-    wavetableWindowSize = mtProject.instrument[instrIdx].sample.wavetable_window_size;
+    wavetableWindowSize = windowSize;
+
     currentWindow = wavetableWindowForceFlag
                       ? forcedWavetableWindow
                       : mtProject.instrument[instrIdx].wavetableCurrentWindow;
@@ -203,4 +217,7 @@ AUDIO_CORE_FLASH audio_block_t* AudioPlayMemory::updateWavetable()
 
         return block;
     }
+
+    release(block);
+    return nullptr;
 }

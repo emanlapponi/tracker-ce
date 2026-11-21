@@ -6,6 +6,7 @@
 #include "util_math.h"
 
 #include <cstdio>
+#include <vector>
 
 class cMenuGroup;
 class cMenuItem;
@@ -28,45 +29,41 @@ typedef cMenuBase* hMenuItem;
 class cMenuGroup : public cMenuBase
 {
   public:
-    cMenuGroup(cMenuGroup& parent, const char* name, uint8_t childs_count)
+    cMenuGroup(cMenuGroup& parent, const char* name)
       : cMenuBase(menuTypeGroup)
       , parentMenu(&parent)
-      , childsCount(childs_count)
-      , childs(new hMenuItem[childs_count]{})
-      , childsNames(new char*[childs_count]{})
-      , childsValues(new char*[childs_count]{})
       , groupName(name)
+      , selectedItem(0)
+      , slot(0)
     {
-        slot = parent.getNextSlotNumber();
-        if (slot < parent.childsCount)
+        if (&parent != this)
         {
-            parent.childs[slot] = this;
-            parent.childsNames[slot] = (char*)name;
+            slot = parent.addChild(this, name);
         }
-        selectedItem = 0;
-        slotsUsed = 0;
     }
 
-    ~cMenuGroup() { delete[] childs; }
+    ~cMenuGroup() = default;
 
     cMenuGroup* getSelChild() { return (cMenuGroup*)childs[selectedItem]; }
 
-    uint8_t getCount() { return childsCount; }
+    uint8_t getCount() const { return static_cast<uint8_t>(childs.size()); }
 
-    char** getNames() { return childsNames; }
+    char** getNames() { return childsNames.data(); }
 
     char** getValues()
     {
         reloadValues();
-        return childsValues;
+        return childsValues.data();
     }
 
     uint8_t getSelectedItem() { return selectedItem; }
 
-    uint8_t getNextSlotNumber()
+    uint8_t addChild(hMenuItem child, const char* name)
     {
-        uint8_t nextSlot = slotsUsed;
-        slotsUsed++;
+        uint8_t nextSlot = static_cast<uint8_t>(childs.size());
+        childs.push_back(child);
+        childsNames.push_back(const_cast<char*>(name));
+        childsValues.push_back(nullptr);
         return nextSlot;
     }
 
@@ -78,14 +75,12 @@ class cMenuGroup : public cMenuBase
 
   private:
     cMenuGroup* parentMenu;
-    const uint8_t childsCount;
-    hMenuItem* childs;
-    char** childsNames;
-    char** childsValues;
+    std::vector<hMenuItem> childs;
+    std::vector<char*> childsNames;
+    std::vector<char*> childsValues;
     const char* groupName;
 
     uint8_t selectedItem;
-    uint8_t slotsUsed;
     uint8_t slot;
 
     friend class cMenuItem;
@@ -109,12 +104,7 @@ class cMenuItem : public cMenuBase
                        ? new char[kTempValueTextLen + 1]
                        : nullptr)
     {
-        uint8_t slot = parent.getNextSlotNumber();
-        if (slot < parent.childsCount)
-        {
-            parent.childs[slot] = this;
-            parent.childsNames[slot] = (char*)name;
-        }
+        parent.addChild(this, name);
         valueEditState = 0;
 
         // safe check

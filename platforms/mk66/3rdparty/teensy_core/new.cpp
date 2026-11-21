@@ -61,3 +61,14 @@ void operator delete[](void * ptr, size_t size) noexcept
 
 //void __cxa_pure_virtual(void) {};
 
+// Minimal terminate handler: the libstdc++ default (__verbose_terminate_handler)
+// demangles the exception type name and pulls in ~26 KB of cp-demangle code,
+// and its stderr output cannot be seen on this platform anyway.
+// Trap instead of spinning so the terminate reaches the fault handler, where a
+// crash reporter can see it (PC in this function, LR at the caller).
+namespace __gnu_cxx {
+void __verbose_terminate_handler()
+{
+  __builtin_trap();
+}
+}

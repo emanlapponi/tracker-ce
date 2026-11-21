@@ -196,7 +196,9 @@ void WorkspaceProjectSave::stop()
     {
         if (operationStep == WorkspaceProjectSaveStep::saveInstrumentSample)
         {
-            while (operationStep == WorkspaceProjectSaveStep::saveInstrumentSample)
+            // A failed write ends the operation without leaving this step.
+            while (operationStep == WorkspaceProjectSaveStep::saveInstrumentSample &&
+                   newFileManager.getCurrentOperation() == fmSaveWorkspaceProject)
             {
                 update();
             }

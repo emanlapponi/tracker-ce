@@ -1,7 +1,7 @@
 #ifndef SOURCE_UTIL_STRING_H_
 #define SOURCE_UTIL_STRING_H_
 
-// returns true if a is equal or less than b
+// returns true if a is less than b
 // if this algorithm encounters a string of digits in the base string, it is treated as one integer
 // that is less than the character being compared
 bool compareStrings(const char* a, const char* b);

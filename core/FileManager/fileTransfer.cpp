@@ -156,6 +156,13 @@ uint8_t cFileTransfer::loadFileToMemory(const char* file,
             {
                 transferStep = 3;
             }
+            else if (mode == fileWholeOnce)
+            {
+                // Everything was asked for in one read, so a shorter result means
+                // the file ends here. Waiting for more would hand the rest of this
+                // transfer to whoever calls next, with a different buffer.
+                transferStep = 3;
+            }
             else
             {
                 return fileTransferInProgress;
@@ -1337,6 +1344,7 @@ uint8_t cFileTransfer::saveMemoryToWav(int16_t* memoryChannelL,
         {
             if (memoryChannelL == memoryChannelR)
             {
+                conversionInPlace = false;
                 sourceMemTotal = samplesCount * 2;
             }
             else
@@ -1344,6 +1352,9 @@ uint8_t cFileTransfer::saveMemoryToWav(int16_t* memoryChannelL,
                 conversionInPlace = true; // combine two buffers into stereo file
                 sourceMemTotal = samplesCount * 4;
             }
+
+            // the header is written last, in front of the data
+            fileSystem->seekFile(sizeof(sampleHead), transferFile);
 
             memStep = READ_WRITE_BUFOR_SIZE;
             sourceMemComplited = 0;
@@ -1363,7 +1374,7 @@ uint8_t cFileTransfer::saveMemoryToWav(int16_t* memoryChannelL,
         if (conversionInPlace)
         {
             uint32_t offset = sourceMemComplited / 4;
-            for (uint32_t sample = 0; sample < memStep / 2; sample++)
+            for (uint32_t sample = 0; sample < memStep / 4; sample++)
             {
                 ((int16_t*)externalRamFileManagerSrcBuff)[2 * sample] =
                   memoryChannelL[sample + offset];

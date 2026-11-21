@@ -8,6 +8,8 @@
 
 bool cFileManager::previevSamplefromSD(uint8_t index, uint16_t from, uint16_t to)
 {
+    stopAutosave();
+
     if (status != fmIdle && status != fmSavingProjectToWorkspace)
         return false;
     if (currentOperation != fmNoOperation && currentOperation != fmSaveWorkspaceProject)

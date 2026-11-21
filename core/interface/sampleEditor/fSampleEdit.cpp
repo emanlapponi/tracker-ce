@@ -3096,7 +3096,7 @@ static void functPlay()
     }
 
     mtPadBoard.startNoteWithoutInstrument(
-      60,
+      60 + SE->editorInstrument->tuneResample,
       addresses,
       SE->currentEffect->getSampleLengthToPreview(),
       vol,

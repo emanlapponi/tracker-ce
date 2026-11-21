@@ -51,7 +51,7 @@ class AudioPlaySdWav : public AudioStream
 #ifdef MONO_STREAM
     uint32_t convertAudioData(int16_t* outPtr, uint32_t outputSamples);
 #else
-    uint32_t convertAudioData(std::vector<int16_t*> outPtr, uint32_t outputSamples);
+    uint32_t convertAudioData(int16_t* outPtr[kMaxChannels], uint32_t outputSamples);
 #endif
     int16_t getInputSample(int sampleIdx, uint32_t bytesPerSample, int channel = 0);
 };

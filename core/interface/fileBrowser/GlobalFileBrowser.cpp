@@ -2044,7 +2044,8 @@ void cGlobalFileBrowser::handleDeleteRequest()
         {
             if (!denyReason.empty())
             {
-                mtPopups.show(1, denyReason.c_str());
+                snprintf(deleteDeniedText, sizeof(deleteDeniedText), "%s", denyReason.c_str());
+                mtPopups.show(1, deleteDeniedText);
             }
             return;
         }

@@ -180,6 +180,11 @@ const char* const patternInfoTexts[3] = {
     "Off",
 };
 
+const char* const noteDisplayModeTexts[2] = {
+    "Original",
+    "Traditional",
+};
+
 // metronome
 
 const char* const metroTimeSig[12] = {
@@ -328,6 +333,10 @@ const char hexModeDesc[] = { "Enable the throwback hex goodness: pattern step nu
 const char patternArraDesc[] = { "Pattern arrangement type" };
 
 const char patternInfo[] = { "Pattern info" };
+
+const char noteDisplayModeDesc[] = {
+    "Choose how notes are displayed in Pattern View: Original (C4, C#4) or Traditional (C-4, C#4)."
+};
 
 const char usbAudioDesc[] = {
     "Enables audio over USB. For best results connect the device directly to your computer USB "

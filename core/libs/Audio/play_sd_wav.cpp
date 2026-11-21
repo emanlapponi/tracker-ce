@@ -122,7 +122,7 @@ uint32_t AudioPlaySdWav::convertAudioData(int16_t* outPtr, uint32_t outputSample
     return outputSamples;
 }
 #else
-AUDIO_CORE_FLASH uint32_t AudioPlaySdWav::convertAudioData(std::vector<int16_t*> outPtr,
+AUDIO_CORE_FLASH uint32_t AudioPlaySdWav::convertAudioData(int16_t* outPtr[kMaxChannels],
                                                      uint32_t outputSamples)
 {
     uint32_t bytesPerSample = (wavHeader.bitsPerSample / 8) * wavHeader.numChannels;
@@ -236,6 +236,7 @@ AUDIO_CORE_FLASH void AudioPlaySdWav::update(void)
                 for (int channelToRelease = 0; channelToRelease < channel; channelToRelease++)
                 {
                     release(block[channelToRelease]);
+                    block[channelToRelease] = NULL;
                 }
                 return;
             }
@@ -274,10 +275,11 @@ AUDIO_CORE_FLASH void AudioPlaySdWav::update(void)
         convertAudioData(block[0]->data, targetSamples);
 #else
 
-        std::vector<int16_t*> data;
+        // This runs in the audio interrupt, where the heap must not be used.
+        int16_t* data[kMaxChannels];
         for (int channel = 0; channel < kMaxChannels; channel++)
         {
-            data.push_back(block[channel]->data);
+            data[channel] = block[channel]->data;
         }
 
         convertAudioData(data, targetSamples);

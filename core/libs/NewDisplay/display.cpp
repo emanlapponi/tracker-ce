@@ -5,6 +5,7 @@
 
 #include "DisplayDriver.h"
 #include "Platform.h"
+#include "SdTextFile.h"
 #include "Themes.h"
 #include "TrackerImpl.h"
 #include "display.h"
@@ -1545,12 +1546,7 @@ bool cDisplay::loadCustomFontFromSD(FileSystem* fs, const char* fontFilePath)
     if (!fs || !fontFilePath)
         return false;
 
-    auto [isOpen, file] = fs->openFile(fontFilePath, FileSystem::FileOpenMode::kRead);
-    if (!isOpen || !file)
-    {
-        const char* alt = (fontFilePath[0] == '/') ? fontFilePath + 1 : fontFilePath;
-        std::tie(isOpen, file) = fs->openFile(alt, FileSystem::FileOpenMode::kRead);
-    }
+    auto [isOpen, file] = SdTextFile::openWithFallback(fs, fontFilePath, FileSystem::FileOpenMode::kRead);
     if (!isOpen || !file)
         return false;
 

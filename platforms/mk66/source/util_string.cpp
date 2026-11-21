@@ -3,6 +3,39 @@
 #include <cstdlib>
 #include <cstring>
 
+// Compares the numbers that a and b start with by value, whatever their length, and moves both
+// pointers past the digits. The result is negative, zero or positive, as that of strcmp.
+static int compareNumbers(const char*& a, const char*& b)
+{
+    while (*a == '0')
+    {
+        a++;
+    }
+    while (*b == '0')
+    {
+        b++;
+    }
+
+    const char* aDigits = a;
+    const char* bDigits = b;
+
+    while (std::isdigit(*a))
+    {
+        a++;
+    }
+    while (std::isdigit(*b))
+    {
+        b++;
+    }
+
+    if (a - aDigits != b - bDigits)
+    {
+        return (a - aDigits) < (b - bDigits) ? -1 : 1;
+    }
+
+    return std::strncmp(aDigits, bDigits, a - aDigits);
+}
+
 bool compareStrings(const char* a, const char* b)
 {
     size_t aLength = std::strlen(a);
@@ -15,20 +48,11 @@ bool compareStrings(const char* a, const char* b)
 
         if (isDigitA && isDigitB)
         {
-            int intA = std::atoi(a);
-            int intB = std::atoi(b);
+            int order = compareNumbers(a, b);
 
-            if (intA == intB)
+            if (order != 0)
             {
-                while (std::isdigit(*a))
-                {
-                    a++;
-                    b++;
-                }
-            }
-            else
-            {
-                return intA < intB;
+                return order < 0;
             }
         }
         else if (isDigitA != isDigitB)
@@ -52,7 +76,15 @@ bool compareStrings(const char* a, const char* b)
         }
     }
 
-    return aLength <= bLength;
+    // A name that ends where the other one goes on comes first.
+    if (*a != 0 || *b != 0)
+    {
+        return *a == 0;
+    }
+
+    // What is left are names that differ in letter case or leading zeros only. Two equal names
+    // must give false both ways: std::sort can leave its range with a comparison that does not.
+    return aLength < bLength;
 }
 
 void polystrncpy(char* dest, const char* src, int destSize)

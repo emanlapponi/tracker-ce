@@ -733,9 +733,10 @@ void cSamplePlayback::showGranularPositionValue()
     uint32_t effectiveGrainLength =
       (currentEnvelopeGranLen > 0) ? currentEnvelopeGranLen
                                    : static_cast<uint32_t>(editorInstrument->granular.grainLength);
+    // An empty instrument has no sample to measure the grain against.
+    uint32_t sampleLength = editorInstrument->sample.length;
     uint16_t granularDisplayedLength =
-      ((uint32_t)(effectiveGrainLength * 600)) /
-      editorInstrument->sample.length;
+      sampleLength > 0 ? ((uint32_t)(effectiveGrainLength * 600)) / sampleLength : 0;
 
     granularPositionInSpectrum = currentEnvelopeGranPos * (600.0 / MAX_16BIT);
 
